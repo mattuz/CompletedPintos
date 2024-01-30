@@ -67,6 +67,9 @@ int64_t timer_ticks(void)
 	enum intr_level old_level = intr_disable();
 	int64_t t = ticks;
 	intr_set_level(old_level);
+	//LIMA
+	//barrier();
+	//LIMA
 	return t;
 }
 
@@ -85,6 +88,19 @@ void timer_sleep(int64_t ticks)
 
 	ASSERT(intr_get_level() == INTR_ON);
 	while (timer_elapsed(start) < ticks) thread_yield();
+
+	/*LIMA
+	ASSERT (intr_get_level () == INTR_ON);
+  	enum intr_level old_value = intr_disable();
+  	struct thread *t = thread_current();
+  	int64_t start = timer_ticks ();
+  	if(ticks > 0){
+   	 	t-> sleep_time = start+ticks;
+    	list_push_back(&sleeping_threads, &t->sleeping_elem);
+    	thread_block();
+    	//free(t);
+    	intr_set_level(old_value);
+  }LIMA*/
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -152,10 +168,23 @@ void timer_print_stats(void)
 
 /* Timer interrupt handler. */
 static void timer_interrupt(struct intr_frame* args UNUSED)
-{
-	ticks++;
-	thread_tick();
-}
+{//LIMA
+  struct list_elem *sleeping_elem = list_begin(&sleeping_threads);
+  ticks++;
+  thread_tick ();
+  while(!(sleeping_elem == list_end(&sleeping_threads))) {
+
+    struct thread *t = list_entry(sleeping_elem, struct thread, sleeping_elem);
+    if(ticks == t->sleep_time){
+
+      sleeping_elem = list_remove(sleeping_elem);
+      thread_unblock(t);
+
+    } else {
+      sleeping_elem = sleeping_elem->next;
+    }
+  }
+}//LIMA
 
 /* Returns true if LOOPS iterations waits for more than one timer
 	tick, otherwise false. */
