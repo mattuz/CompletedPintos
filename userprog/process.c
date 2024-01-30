@@ -1,5 +1,13 @@
 #include "userprog/process.h"
-
+#include <debug.h>
+#include <inttypes.h>
+#include <round.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "userprog/gdt.h"
+#include "userprog/pagedir.h"
+#include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -9,16 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "userprog/gdt.h"
-#include "userprog/pagedir.h"
-#include "userprog/tss.h"
-
-#include <debug.h>
-#include <inttypes.h>
-#include <round.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "threads/malloc.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
@@ -29,45 +29,91 @@ static void dump_stack(const void* esp);
 	before process_execute() returns.  Returns the new process's
 	thread id, or TID_ERROR if the thread cannot be created. */
 tid_t process_execute(const char* cmd_line)
-{
-	char* cl_copy;
-	tid_t tid;
+{//LISMA
+  //Här är vi inne i föräldern
+  char *fn_copy;
+  tid_t tid;
+  struct thread *t = thread_current();
+  struct parent_child *parent_child; 
+  struct aux *aux;
 
-	/* Make a copy of CMD_LINE.
-		Otherwise there's a race between the caller and load(). */
-	cl_copy = palloc_get_page(0);
-	if (cl_copy == NULL)
-		return TID_ERROR;
-	strlcpy(cl_copy, cmd_line, PGSIZE);
+  parent_child = malloc(sizeof(struct parent_child)); 
+  aux = malloc(sizeof(struct aux));
 
-	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
-	if (tid == TID_ERROR)
-		palloc_free_page(cl_copy);
-	return tid;
-}
+  /* Make a copy of FILE_NAME. //CMD_LINE NUMERA
+     Otherwise there's a race between the caller and load(). */
+  fn_copy = palloc_get_page (0);
+  if (fn_copy == NULL) //cl_copy numera!!
+    return TID_ERROR;
+  strlcpy (fn_copy, file_name, PGSIZE); //cl_copy
+
+  parent_child->alive_count = 2;
+  parent_child->exited = false;
+  
+  aux->parent_child = parent_child;
+  aux->file_name = fn_copy;//cl_copy
+
+  
+  sema_init(&parent_child->sema, 0);
+  sema_init(&parent_child->wait_sema, 0);
+  lock_init(&parent_child->lock); 
+
+ 
+  /* Create a new thread to execute FILE_NAME. */
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, aux); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
+
+  if (tid == TID_ERROR){
+    
+    palloc_free_page (fn_copy);
+  } else {
+    parent_child->child_tid = tid;
+    list_push_back(&t->children_list, &parent_child->child); 
+  }
+  sema_down(&parent_child->sema);
+  
+  //Kolla om load har failat
+  if (parent_child->load == false) {
+    return -1;
+  }
+  else {
+    return tid;
+  }
+}//LISMA
 
 /* A thread function that loads a user process and starts it
 	running. */
-static void start_process(void* cmd_line_)
-{
-	char* cmd_line = cmd_line_;
+static void start_process(void *aux_) //LISMA
+{									//aux är numera cmd_line_
+	//char* cmd_line = cmd_line_; detta är nytt
+
+	//Här inne är vi inne i barnet
+	struct aux *aux= (struct aux*)aux_;
 	struct intr_frame if_;
 	bool success;
+	struct thread *t = thread_current();
+
+	t->parent = aux->parent_child;
 
 	/* Initialize interrupt frame and load executable. */
 	memset(&if_, 0, sizeof if_);
 	if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
-	
+	success = load (aux->file_name, &if_.eip, &if_.esp);
 	// Note: load requires the file name only, not the entire cmd_line
-	success = load(cmd_line, &if_.eip, &if_.esp);
+	//success = load(cmd_line, &if_.eip, &if_.esp); NY (namnet mest)
 
 	/* If load failed, quit. */
-	palloc_free_page(cmd_line);
-	if (!success)
-		thread_exit();
+	palloc_free_page (aux->file_name); //här står det cmd_line ist för aux-file_name
+
+	t->parent->load = true;
+	sema_up(&t->parent->sema); 
+	if (!success) {
+		t->parent->load = false;
+		free(t->parent); 
+		thread_exit ();
+	} //LISMA
+    
 
 	/* Start the user process by simulating a return from an
 		interrupt, implemented by intr_exit (in
@@ -86,20 +132,80 @@ static void start_process(void* cmd_line_)
 	been successfully called for the given TID, returns -1
 	immediately, without waiting.
 
-	This function will be implemented in problem 2-2.  For now, it
-	does nothing. */
-int process_wait(tid_t child_tid UNUSED)
+   This function will be implemented in problem 2-2.  For now, it
+   does nothing. */
+int
+process_wait (tid_t child_tid UNUSED) //LISMA
 {
-	for (;;) {
+  //while(true){};
+  struct thread *cur = thread_current ();  
+  struct list_elem *e;
 
-	}
-}
+  for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
+           e = list_next (e)) {
+          struct parent_child *f = list_entry (e, struct parent_child, child);
+    if (child_tid == f->child_tid){
+      list_remove(e);
+      if (f->exited) {
+        return f->exit_status;
+      } 
+      else {
+        //wait
+        sema_down(&f->wait_sema);
+        return f->exit_status;
+      }
+    }
+  }
+        
+  
+return -1;
+}//LISMA
 
 /* Free the current process's resources. */
-void process_exit(void)
+void process_exit(void) //LISMA
 {
-	struct thread* cur = thread_current();
-	uint32_t* pd;
+  struct thread *cur = thread_current ();
+  uint32_t *pd;
+  int fd = 2;
+
+  if (cur->parent != NULL) { 
+    lock_acquire(&cur->parent->lock); //Kolla om parent är null. sätt parent null i init_thread
+    cur->parent->alive_count--;
+    lock_release(&cur->parent->lock);
+    //sema_down(&cur->parent->sema);//om vi inte har parent? fixa i lab5
+  }
+
+  cur->parent->exited = true;
+  printf("%s: exit(%d)\n", cur->name, cur->parent->exit_status);
+  struct list_elem *e;
+  for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
+           e = list_next (e)) {
+          struct parent_child *f = list_entry (e, struct parent_child, child);
+          lock_acquire(&f->lock); //klagar här 
+          f->alive_count--;
+          lock_release(&f->lock);
+
+          if(f->alive_count == 0) { //free parent_child struct list elements (children) from memory
+            list_remove(e);
+            free(f);
+          }
+        }
+  if (cur->parent != NULL) { 
+    //sema_up(&cur->parent->sema); //denna up och down kanske inte behövs om vi använder lock?
+  }
+
+  while(fd < 130){
+    if(cur->files[fd] != NULL){
+      file_close(cur->files[fd]);
+    }
+    else fd++;
+  }
+
+  sema_up(&cur->parent->wait_sema); //wait is done
+  if(cur->parent->alive_count == 0) { //free parent_child struct (parent) from memory
+    free(cur->parent);
+    cur->parent = NULL;
+  } //LISMA
 
 	/* Destroy the current process's page directory and switch back
 		to the kernel-only page directory. */
@@ -180,14 +286,14 @@ struct Elf32_Phdr {
 };
 
 /* Values for p_type.  See [ELF1] 2-3. */
-#define PT_NULL	 0				/* Ignore. */
-#define PT_LOAD	 1				/* Loadable segment. */
-#define PT_DYNAMIC 2				/* Dynamic linking info. */
-#define PT_INTERP	 3				/* Name of dynamic loader. */
-#define PT_NOTE	 4				/* Auxiliary info. */
-#define PT_SHLIB	 5				/* Reserved. */
-#define PT_PHDR	 6				/* Program header table. */
-#define PT_STACK	 0x6474e551 /* Stack segment. */
+#define PT_NULL    0            /* Ignore. */
+#define PT_LOAD    1            /* Loadable segment. */
+#define PT_DYNAMIC 2            /* Dynamic linking info. */
+#define PT_INTERP  3            /* Name of dynamic loader. */
+#define PT_NOTE    4            /* Auxiliary info. */
+#define PT_SHLIB   5            /* Reserved. */
+#define PT_PHDR    6            /* Program header table. */
+#define PT_STACK   0x6474e551   /* Stack segment. */
 
 /* Flags for p_flags.  See [ELF3] 2-3 and 2-4. */
 #define PF_X 1 /* Executable. */
@@ -205,10 +311,11 @@ static bool load_segment(
 	 bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
-	Stores the executable's entry point into *EIP
-	and its initial stack pointer into *ESP.
-	Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp)
+   Stores the executable's entry point into *EIP
+   and its initial stack pointer into *ESP.
+   Returns true if successful, false otherwise. */
+bool
+load (const char *cmd_line, void (**eip) (void), void **esp) //cmd_line har bytt namn till file_name här
 {
 	struct thread* t = thread_current();
 	struct Elf32_Ehdr ehdr;
@@ -217,11 +324,120 @@ bool load(const char* file_name, void (**eip)(void), void** esp)
 	bool success = false;
 	int i;
 
-	/* Allocate and activate page directory. */
-	t->pagedir = pagedir_create();
-	if (t->pagedir == NULL)
-		goto done;
-	process_activate();
+  /* Allocate and activate page directory. */
+  t->pagedir = pagedir_create ();
+  if (t->pagedir == NULL) 
+    goto done;
+  process_activate ();
+
+//LISMA FRAM TILL NÄSTA
+
+  /* Set up stack. */
+  if (!setup_stack (esp)){
+    goto done;
+  } //DENNA GÖRS NU LÄNGRE NER
+
+  //här delar vi upp filename/cmd_line i namn + argument.
+  //Lägg var och en på stacken 
+
+  char *token, *save_ptr;
+  char *argv[32]; //vill vi alokera minne här då vi sen bara ska ha pekare till den på stacken??
+  int no = 0; //detta är argc
+  int zerow = 0;
+
+  for (token = strtok_r (cmd_line, " ", &save_ptr); token != NULL;
+    token = strtok_r (NULL, " ", &save_ptr)) {
+      *esp = *esp - strlen(token)-1;
+      argv[no] = *esp; 
+      //printf("esp pos: %p \n", *esp);
+      //printf ("'%s'\n", token);
+      memcpy(*esp, token, strlen(token)+1);
+      no += 1;
+    }
+
+  const char *file_name = argv[0]; //file_name behövs senare så vi tar ut det
+    //måste ändra esp själva, stringlen() borde ge oss hur långt vi ska hoppa i adressen
+  int argc =no;
+    // **är en pekare till en pekare 
+    // (dvs adressen till en annan adress till någon data)
+    // && så ändrar man datan
+    // & så ändrar man adressen till datan
+    //eller???
+
+  for (int i=1; i<5; i++){ //Hitta närmaste jämnt delbara med 4 
+      if ((int)(*esp) % 4 == 0){
+      break;
+    } //denna funkar nu, men frågan är om den ska ge plats åt en hel "pekare"
+    *esp = *esp-1;
+  }
+
+  void *memargv;
+  *esp = *esp - 4;
+
+  for(int j=no; j>=0; j--){
+    //pusha upp på stacken
+    if (j == no) {
+      memcpy(*esp, &zerow, 4);
+    } else {
+      memcpy(*esp, &argv[j], 4);
+     
+    }
+    memargv = *esp; 
+    *esp = *esp - 4;
+  }
+  int* eit = 8;
+  //**esp = *esp - 4; //lägg till adressen till argv (som ligger på platsen innan)
+  memcpy(*esp, &memargv, 4);
+  *esp = *esp - 4;
+  //**esp = argc; //lägg till argc
+  memcpy(*esp, &argc, 4);
+  *esp = *esp - 4;
+  //**esp = eip; //lägg till return address
+  memcpy(*esp, &eip, 4);
+  //*esp = *esp - 4;
+
+  
+
+  strlcpy (thread_current()->name, file_name, sizeof thread_current()->name);
+
+   /* Uncomment the following line to print some debug
+     information. This will be useful when you debug the program
+     stack.*/
+//#define STACK_DEBUG //komentera bort om vi inte vill ha debug info
+
+#ifdef STACK_DEBUG
+  printf("*esp is %p\nstack contents:\n", *esp);
+  hex_dump((int)*esp , *esp, PHYS_BASE-*esp+16, true);
+  /* The same information, only more verbose: */
+  /* It prints every byte as if it was a char and every 32-bit aligned
+     data as if it was a pointer. */
+  void * ptr_save = PHYS_BASE;
+  i=-15;
+  while(ptr_save - i >= *esp) {
+    char *whats_there = (char *)(ptr_save - i);
+    // show the address ...
+    printf("%x\t", (uint32_t)whats_there);
+    // ... printable byte content ...
+    if(*whats_there >= 32 && *whats_there < 127)
+      printf("%c\t", *whats_there);
+    else
+      printf(" \t");
+    // ... and 32-bit aligned content 
+    if(i % 4 == 0) {
+      uint32_t *wt_uint32 = (uint32_t *)(ptr_save - i);
+      printf("%x\t", *wt_uint32);
+      printf("\n-------");
+      if(i != 0)
+        printf("------------------------------------------------");
+      else
+        printf(" the border between KERNEL SPACE and USER SPACE ");
+      printf("-------");
+    }
+    printf("\n");
+    i++;
+  }
+#endif
+//LISMA (tror debuggen inte finns kvar)
 
 	/* Open executable file. */
 	file = filesys_open(file_name);
@@ -298,9 +514,12 @@ bool load(const char* file_name, void (**eip)(void), void** esp)
 		}
 	}
 
-	/* Set up stack. */
+	/* NY PLATS PÅ DENNA
+	//Set up stack. 
 	if (!setup_stack(esp))
 		goto done;
+	*/
+	
 
 	/* Start address. */
 	*eip = (void (*)(void)) ehdr.e_entry;
@@ -370,55 +589,80 @@ static bool validate_segment(const struct Elf32_Phdr* phdr, struct file* file)
 
 		  - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
 
-	The pages initialized by this function must be writable by the
-	user process if WRITABLE is true, read-only otherwise.
+   The pages initialized by this function must be writable by the
+   user process if WRITABLE is true, read-only otherwise.
 
-	Return true if successful, false if a memory allocation error
-	or disk read error occurs. */
-static bool load_segment(
-	 struct file* file,
-	 off_t ofs,
-	 uint8_t* upage,
-	 uint32_t read_bytes,
-	 uint32_t zero_bytes,
-	 bool writable)
-{
-	ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
-	ASSERT(pg_ofs(upage) == 0);
-	ASSERT(ofs % PGSIZE == 0);
+   Return true if successful, false if a memory allocation error
+   or disk read error occurs. */
+static bool
+load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t page_offset,
+              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+{ //LISMA page_offset är inte en grej här längre, kan vara så att vi implementerat detta.
+  ASSERT ((page_offset + read_bytes + zero_bytes) % PGSIZE == 0);
+  ASSERT (pg_ofs (upage) == 0);
 
-	file_seek(file, ofs);
-	while (read_bytes > 0 || zero_bytes > 0) {
-		/* Calculate how to fill this page.
-			We will read PAGE_READ_BYTES bytes from FILE
-			and zero the final PAGE_ZERO_BYTES bytes. */
-		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+  struct thread *t = thread_current();
+  
+  file_seek (file, ofs);
+  while (read_bytes > 0 || zero_bytes > 0) 
+    {
+      /* Calculate how to fill this page.
+         We will read PAGE_READ_BYTES bytes from FILE
+         and zero the final PAGE_ZERO_BYTES bytes. */
+	  size_t page_read_bytes = page_offset + read_bytes;
+	  //size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+	  //NY OVAN, vår är den som står kvar
+      //if (page_read_bytes > PGSIZE)
+	  //     page_read_bytes = PGSIZE; //Detta fanns inte heller kvar
+
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* Get a page of memory. */
-		uint8_t* kpage = palloc_get_page(PAL_USER);
+		uint8_t* kpage = palloc_get_page(PAL_USER); //NY KPAGE
 		if (kpage == NULL)
 			return false;
+	/*VÅR GAMLA KPAGE HÄR
+	      // Get a page of memory. 
+      bool new_kpage = false;
+      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
+      if (!kpage)
+      {
+            new_kpage = true;
+            kpage = palloc_get_page (PAL_USER);
+      }
 
-		/* Load this page. */
-		if (file_read(file, kpage, page_read_bytes) != (int) page_read_bytes) {
-			palloc_free_page(kpage);
-			return false;
-		}
-		memset(kpage + page_read_bytes, 0, page_zero_bytes);
+      if (kpage == NULL)
+        return false;
+	
+	*/
 
-		/* Add the page to the process's address space. */
-		if (!install_page(upage, kpage, writable)) {
-			palloc_free_page(kpage);
-			return false;
-		}
+      /* Load this page. */ //LISMA page_offset
+      if (file_read (file, kpage + page_offset, page_read_bytes - page_offset) != (int) (page_read_bytes - page_offset))
+      {
+        if (new_kpage)
+		palloc_free_page (kpage);
+        return false;
 
-		/* Advance. */
-		read_bytes -= page_read_bytes;
-		zero_bytes -= page_zero_bytes;
-		upage += PGSIZE;
-	}
-	return true;
+      }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+      /* Add the page to the process's address space. */       
+      if (new_kpage)
+      {
+            if (!install_page (upage, kpage, writable))
+            {
+                  palloc_free_page (kpage);
+                  return false;
+            }
+      }
+
+      /* Advance. */
+      read_bytes -= page_read_bytes - page_offset;
+      zero_bytes -= page_zero_bytes;
+      page_offset = 0;		//LISMA
+      upage += PGSIZE;
+    }
+  return true;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -428,14 +672,15 @@ static bool setup_stack(void** esp)
 	uint8_t* kpage;
 	bool success = false;
 
-	kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-	if (kpage != NULL) {
-		success = install_page(((uint8_t*) PHYS_BASE) - PGSIZE, kpage, true);
+	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	if (kpage != NULL) 
+		{
+		success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
 		if (success)
-			*esp = PHYS_BASE;
+			*esp = PHYS_BASE; // ska vara -12 innan argumentpassing är implementerat
 		else
-			palloc_free_page(kpage);
-	}
+			palloc_free_page (kpage);
+		}
 	return success;
 }
 
@@ -462,15 +707,18 @@ static bool install_page(void* upage, void* kpage, bool writable)
 // Don't raise a warning about unused function.
 // We know that dump_stack might not be called, this is fine.
 
+/*NY NEDAN, tror det är nya platsen för errormeddelandet
+
+
 #pragma GCC diagnostic ignored "-Wunused-function"
-/* With the given stack pointer, will try and output the stack to STDOUT. */
+// With the given stack pointer, will try and output the stack to STDOUT. 
 static void dump_stack(const void* esp)
 {
 	printf("*esp is %p\nstack contents:\n", esp);
 	hex_dump((int) esp, esp, PHYS_BASE - esp + 16, true);
-	/* The same information, only more verbose: */
-	/* It prints every byte as if it was a char and every 32-bit aligned
-		data as if it was a pointer. */
+	// The same information, only more verbose: 
+	// It prints every byte as if it was a char and every 32-bit aligned
+	//	data as if it was a pointer. 
 	void* ptr_save = PHYS_BASE;
 	int i = -15;
 	while (ptr_save - i >= esp) {
@@ -498,3 +746,4 @@ static void dump_stack(const void* esp)
 	}
 }
 #pragma GCC diagnostic pop
+*/
