@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -75,31 +76,62 @@ typedef int tid_t;
 	value, triggering the assertion. */
 
 /* The `elem' member has a dual purpose.  It can be an element in
-	the run queue (thread.c), or it can be an element in a
-	semaphore wait list (synch.c).  It can be used these two ways
-	only because they are mutually exclusive: only a thread in the
-	ready state is on the run queue, whereas only a thread in the
-	blocked state is on a semaphore wait list. */
-struct thread {
-	/* Owned by thread.c. */
-	tid_t tid;						/* Thread identifier. */
-	enum thread_status status; /* Thread state. */
-	char name[16];					/* Name (for debugging purposes). */
-	uint8_t* stack;				/* Saved stack pointer. */
+   the run queue (thread.c), or it can be an element in a
+   semaphore wait list (synch.c).  It can be used these two ways
+   only because they are mutually exclusive: only a thread in the
+   ready state is on the run queue, whereas only a thread in the
+   blocked state is on a semaphore wait list. */
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
 	int priority;					/* Priority. */
-	struct list_elem allelem;	/* List element for all threads list. */
+	struct list_elem allelem;//NY	/* List element for all threads list. */
+	//LIMA
+	/* List of all the children of a thread */
+    struct list children_list;
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem; /* List element. */
+    /* Pointer to parent_child struct */
+    struct parent_child *parent; 
 
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+    
+    /* List och sleeping treads*/
+    struct list_elem sleeping_elem;
+
+    /* Time to sleep */
+    int64_t sleep_time;
 #ifdef USERPROG
-	/* Owned by userprog/process.c. */
-	uint32_t* pagedir; /* Page directory. */
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;           /* Page directory. */
+    struct file *files[130]; /* A threads open files can be found
+					   on the index of their FD. */
+    int taken_fds[130];
+
 #endif
 
-	/* Owned by thread.c. */
-	unsigned magic; /* Detects stack overflow. */
-};
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+
+  struct parent_child
+  {
+   tid_t child_tid;
+   int exit_status;
+   int alive_count;
+   bool load;
+   struct semaphore sema;
+   struct semaphore wait_sema;
+   struct list_elem child;
+   struct lock lock;
+   bool exited;
+   
+   //whatever else we need :)
+  };
 
 /* If false (default), use round-robin scheduler.
 	If true, use multi-level feedback queue scheduler.

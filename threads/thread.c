@@ -15,6 +15,7 @@
 #include <string.h>
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "filesys/file.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -177,9 +178,11 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 	if (t == NULL)
 		return TID_ERROR;
 
-	/* Initialize thread. */
-	init_thread(t, name, priority);
-	tid = t->tid = allocate_tid();
+  	/* Initialize thread. */
+  	init_thread (t, name, priority);
+
+   	//första argumentet är namnet
+  	tid = t->tid = allocate_tid (); //t.ex. "args-multiple"
 
 	/* Stack frame for kernel_thread(). */
 	kf = alloc_frame(t, sizeof *kf);
@@ -191,10 +194,17 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 	ef = alloc_frame(t, sizeof *ef);
 	ef->eip = (void (*)(void)) kernel_thread;
 
-	/* Stack frame for switch_threads(). */
-	sf = alloc_frame(t, sizeof *sf);
-	sf->eip = switch_entry;
-	sf->ebp = 0;
+  	/* Stack frame for switch_threads(). */
+  	sf = alloc_frame (t, sizeof *sf);
+  	sf->eip = switch_entry;
+	sf->ebp = 0; //NY
+	//LIMA
+  	#ifdef USERPROG
+		for(int i = 0; i < 130; i++){
+			t->files[i] = NULL;
+		}
+  	#endif
+	//LIMA
 
 	/* Add to run queue. */
 	thread_unblock(t);
@@ -282,7 +292,7 @@ void thread_exit(void)
 		and schedule another process.  That process will destroy us
 		when it calls thread_schedule_tail(). */
 	intr_disable();
-	list_remove(&thread_current()->allelem);
+	list_remove(&thread_current()->allelem); //NY
 	thread_current()->status = THREAD_DYING;
 	schedule();
 	NOT_REACHED();
@@ -307,7 +317,7 @@ void thread_yield(void)
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
 	This function must be called with interrupts off. */
-void thread_foreach(thread_action_func* func, void* aux)
+void thread_foreach(thread_action_func* func, void* aux) //NY
 {
 	struct list_elem* e;
 
@@ -428,17 +438,17 @@ static bool is_thread(struct thread* t)
 static void init_thread(struct thread* t, const char* name, int priority)
 {
 	enum intr_level old_level;
-
-	ASSERT(t != NULL);
-	ASSERT(PRI_MIN <= priority && priority <= PRI_MAX);
-	ASSERT(name != NULL);
-
-	memset(t, 0, sizeof *t);
+  	ASSERT (t != NULL);
+	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+	ASSERT (name != NULL);
+	t->parent = NULL; //sätt parent till NULL innan den blir nåt annat //LIMA
+	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
-	strlcpy(t->name, name, sizeof t->name);
-	t->stack = (uint8_t*) t + PGSIZE;
+	strlcpy (t->name, name, sizeof t->name); //rätt namn? //LIMA
+	t->stack = (uint8_t *) t + PGSIZE;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	list_init (&t->children_list); //list init lab3 //LIMA
 
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);
