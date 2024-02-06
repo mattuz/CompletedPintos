@@ -239,8 +239,11 @@ int write (int fd, const void *buffer, unsigned size){// denna kanske ska valida
 
 void exit (int status){  
   struct thread *thread = thread_current();
-  thread->parent->exit_status = status; //skulle detta skyddas av semaphor?
+  if(thread->parent != NULL){
+    thread->parent->exit_status = status; //skulle detta skyddas av semaphor?
   thread_exit();
+  }
+  
 }
 
 int fd_handler (struct thread *thread){
@@ -277,7 +280,9 @@ int wait (tid_t child_tid){ //returns exit status
 
 //Kan optimeras till en rad <3
 bool valid_addr (void *ptr){ //skrev void så länge, vet inte om det alltid kommer vara samma slags pointer
-  if (is_user_vaddr(ptr) && (pagedir_get_page(thread_current()->pagedir,ptr)!=NULL) ){
+  if (is_user_vaddr(ptr) 
+  && (pagedir_get_page(thread_current()->pagedir,ptr)!=NULL) 
+  && ptr != NULL){
     return true;
   }
   return false;

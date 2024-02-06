@@ -199,6 +199,8 @@ void process_exit(void) //LISMA
   while(fd < 130){
     if(cur->files[fd] != NULL){
       file_close(cur->files[fd]);
+	  cur->taken_fds[fd] = NULL;
+      cur->files[fd] = NULL;
     }
     else fd++;
   }
@@ -259,7 +261,7 @@ typedef uint16_t Elf32_Half;
 struct Elf32_Ehdr {
 	unsigned char e_ident[16];
 	Elf32_Half e_type;
-	Elf32_Half e_machine;
+	Elf32_Half e_machine;	
 	Elf32_Word e_version;
 	Elf32_Addr e_entry;
 	Elf32_Off e_phoff;
