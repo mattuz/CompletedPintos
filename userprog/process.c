@@ -597,10 +597,10 @@ static bool validate_segment(const struct Elf32_Phdr* phdr, struct file* file)
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t page_offset,
+load_segment (struct file *file, off_t ofs, uint8_t *upage, //uint32_t page_offset,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 { //LISMA page_offset är inte en grej här längre, kan vara så att vi implementerat detta.
-  ASSERT ((page_offset + read_bytes + zero_bytes) % PGSIZE == 0);
+  ASSERT ((/*page_offset +*/ read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
 
   struct thread *t = thread_current();
@@ -611,8 +611,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t page_offset
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */
-	  size_t page_read_bytes = page_offset + read_bytes;
-	  //size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+	  //size_t page_read_bytes = page_offset + read_bytes;
+	  size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 	  //NY OVAN, vår är den som står kvar
       //if (page_read_bytes > PGSIZE)
 	  //     page_read_bytes = PGSIZE; //Detta fanns inte heller kvar
@@ -639,9 +639,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t page_offset
 	*/
 
       /* Load this page. */ //LISMA page_offset
-      if (file_read (file, kpage + page_offset, page_read_bytes - page_offset) != (int) (page_read_bytes - page_offset))
+      if (file_read (file, kpage /*+ page_offset*/, page_read_bytes /*- page_offset*/) != (int) (page_read_bytes /*- page_offset*/))
       {
-        if (new_kpage)
 		palloc_free_page (kpage);
         return false;
 
@@ -649,19 +648,18 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t page_offset
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */       
-      if (new_kpage)
-      {
-            if (!install_page (upage, kpage, writable))
-            {
-                  palloc_free_page (kpage);
-                  return false;
-            }
-      }
+      
+		if (!install_page (upage, kpage, writable))
+		{
+				palloc_free_page (kpage);
+				return false;
+		}
+      
 
       /* Advance. */
-      read_bytes -= page_read_bytes - page_offset;
+      read_bytes -= page_read_bytes /*- page_offset*/;
       zero_bytes -= page_zero_bytes;
-      page_offset = 0;		//LISMA
+      //page_offset = 0;		//LISMA
       upage += PGSIZE;
     }
   return true;

@@ -6,6 +6,8 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "devices/shutdown.h"
+
 
 
 
@@ -134,7 +136,7 @@ int convert_to_kernel_pointer(const void *pointer){
 }
 
 void halt(void){
-  power_off();
+  shutdown_power_off();
 }
 
 bool create (const char *file, unsigned initial_size){
