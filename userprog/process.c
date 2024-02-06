@@ -28,7 +28,9 @@ static void dump_stack(const void* esp);
 	CMD_LINE.  The new thread may be scheduled (and may even exit)
 	before process_execute() returns.  Returns the new process's
 	thread id, or TID_ERROR if the thread cannot be created. */
-tid_t process_execute(const char* cmd_line)
+//tid_t process_execute(const char* cmd_line)
+tid_t process_execute(const char* file_name)
+
 {//LISMA
   //Här är vi inne i föräldern
   char *fn_copy;

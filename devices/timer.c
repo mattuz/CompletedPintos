@@ -26,6 +26,7 @@ static bool too_many_loops(unsigned loops);
 static void busy_wait(int64_t loops);
 static void real_time_sleep(int64_t num, int32_t denom);
 static void real_time_delay(int64_t num, int32_t denom);
+struct list sleeping_threads;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
 	and registers the corresponding interrupt. */
@@ -34,6 +35,7 @@ void timer_init(const uint16_t timer_freq)
 	TIMER_FREQ = timer_freq;
 	pit_configure_channel(0, 2, TIMER_FREQ);
 	intr_register_ext(0x20, timer_interrupt, "8254 Timer");
+	  list_init(&sleeping_threads);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -84,12 +86,12 @@ int64_t timer_elapsed(int64_t then)
 	be turned on. */
 void timer_sleep(int64_t ticks)
 {
-	int64_t start = timer_ticks();
+	//int64_t start = timer_ticks();
 
-	ASSERT(intr_get_level() == INTR_ON);
-	while (timer_elapsed(start) < ticks) thread_yield();
+	//ASSERT(intr_get_level() == INTR_ON);
+	//while (timer_elapsed(start) < ticks) thread_yield();
 
-	/*LIMA
+	//LIMA
 	ASSERT (intr_get_level () == INTR_ON);
   	enum intr_level old_value = intr_disable();
   	struct thread *t = thread_current();
@@ -100,7 +102,7 @@ void timer_sleep(int64_t ticks)
     	thread_block();
     	//free(t);
     	intr_set_level(old_value);
-  }LIMA*/
+  }//LIMA*/
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
