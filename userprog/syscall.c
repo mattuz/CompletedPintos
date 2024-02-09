@@ -28,7 +28,16 @@ syscall_handler (struct intr_frame *f UNUSED)
   if(!valid_addr(stack_pointer)){
     exit(-1);
   }
-
+  if(!valid_addr(stack_pointer + 4)){
+    exit(-1);
+  }
+  if(!valid_addr(stack_pointer + 8)){
+    exit(-1);
+  }
+  if(!valid_addr(stack_pointer + 12)){
+    exit(-1);
+  }
+  
   switch(*stack_pointer) {
   case 0:
     halt();
