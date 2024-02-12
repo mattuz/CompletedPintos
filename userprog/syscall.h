@@ -15,5 +15,6 @@ int read (int fd, void *buffer, unsigned size);
 int write (int fd, const void *buffer, unsigned size);
 void exit (int status);
 bool valid_str (const char *string);
-bool valid_addr (void *ptr);
+void valid_fd(int fd);
+bool valid_addr(void *ptr);
 #endif /* userprog/syscall.h */

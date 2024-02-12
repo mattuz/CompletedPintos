@@ -100,8 +100,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     if(!valid_addr(f->esp + 12)){
       exit(-1);
     }
-    unsigned length_read = *(unsigned*) (f->esp + 12);
-    f->eax = read(fd_read, buffer_read, length_read);
+    unsigned size_read = *(unsigned*) (f->esp + 12);
+    f->eax = read(fd_read, buffer_read, size_read);
     break;
   case 9: ;
     if(!valid_addr(f->esp + 4)){
@@ -194,11 +194,10 @@ void close (int fd){
 }
 
 int read (int fd, void *buffer, unsigned size){
-  //validate input
-  if(!valid_addr){
+  valid_fd(fd);
+  if (!valid_addr(buffer)){
     exit(-1);
   }
-
   struct thread *thread = thread_current();
 
   if (fd == 0){
@@ -206,25 +205,32 @@ int read (int fd, void *buffer, unsigned size){
     for(unsigned int i = 0; i < size; i++) {
       *(char*)buffer = input_getc();
       buffer += sizeof(char);
+      if (!valid_addr(buffer)){
+        exit(-1);
+      }
       bytes_read += sizeof(char);
     }
     return bytes_read;
   }
+  
   else if(thread->files[fd]!= NULL){
     if((fd < 130) && (fd > 1)){
       struct file *file = thread-> files[fd];
 
-        return file_read(file, buffer, size);;
+      return file_read(file, buffer, size);;
     }
   }
   else {
-    return -1;
+    //return -1;
+    exit(-1);
   }
 }
 
 int write (int fd, const void *buffer, unsigned size){// denna kanske ska validateas mer (hela size)
   //validate input
-  if(!valid_addr){
+  valid_fd(fd);
+
+  if (!valid_addr(buffer)){
     exit(-1);
   }
 
@@ -295,6 +301,12 @@ bool valid_addr (void *ptr){ //skrev void så länge, vet inte om det alltid kom
     return true;
   }
   return false;
+}
+
+void valid_fd (int fd){
+  if (fd < 0 || fd > 129){
+    exit(-1);
+  }
 }
 
 bool valid_str (const char *string){
