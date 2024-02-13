@@ -109,13 +109,15 @@ static void start_process(void *aux_) //LISMA
 	palloc_free_page (aux->file_name); //här står det cmd_line ist för aux-file_name
 
 	t->parent->load = true;
-	sema_up(&t->parent->sema); 
 	if (!success) {
+		sema_up(&t->parent->sema); 
+
 		t->parent->load = false;
 		free(t->parent); 
 		thread_exit ();
 	} //LISMA
-    
+	sema_up(&t->parent->sema); 
+
 
 	/* Start the user process by simulating a return from an
 		interrupt, implemented by intr_exit (in
@@ -142,20 +144,26 @@ process_wait (tid_t child_tid UNUSED) //LISMA
   //while(true){};
   struct thread *cur = thread_current ();  
   struct list_elem *e;
+  int exit_status;
 
   for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
            e = list_next (e)) {
-          struct parent_child *f = list_entry (e, struct parent_child, child);
-    if (child_tid == f->child_tid){
-      list_remove(e);
-      if (f->exited) {
-        return f->exit_status;
-      } 
-      else {
-        //wait
-        sema_down(&f->wait_sema);
-        return f->exit_status;
-      }
+
+	//Child = f
+	struct parent_child *f = list_entry (e, struct parent_child, child);
+    if (child_tid == f->child_tid && f->child_tid != NULL){
+		sema_down(&f->wait_sema);
+		exit_status = f->exit_status;
+		list_remove(e);
+		free(f);
+      	//if (f->exited) {
+		return exit_status;
+      //} 
+      	//else {
+        	//wait
+        	//sema_down(&f->wait_sema);
+        	//return f->exit_status;
+      //}
     }
   }
         
@@ -173,9 +181,17 @@ void process_exit(void) //LISMA
   if (cur->parent != NULL) { 
     lock_acquire(&cur->parent->lock); //Kolla om parent är null. sätt parent null i init_thread
     cur->parent->alive_count--;
-    lock_release(&cur->parent->lock);
-    //sema_down(&cur->parent->sema);//om vi inte har parent? fixa i lab5
+	if (cur->parent->alive_count == 0){
+		free(cur->parent);
+		cur->parent = NULL;
+		
+	}
+	else {
+		sema_up(&cur->parent->wait_sema);
+		lock_release(&cur->parent->lock);
+	}
   }
+
 
   cur->parent->exited = true;
   printf("%s: exit(%d)\n", cur->name, cur->parent->exit_status);
@@ -184,13 +200,15 @@ void process_exit(void) //LISMA
            e = list_next (e)) {
           struct parent_child *f = list_entry (e, struct parent_child, child);
           lock_acquire(&f->lock); //klagar här 
-          f->alive_count--;
-          lock_release(&f->lock);
+          (f->alive_count)--;
 
           if(f->alive_count == 0) { //free parent_child struct list elements (children) from memory
-            list_remove(e);
+            //list_remove(e);
             free(f);
           }
+		  else {
+			lock_release(&f->lock);
+		  }
         }
   if (cur->parent != NULL) { 
     //sema_up(&cur->parent->sema); //denna up och down kanske inte behövs om vi använder lock?
@@ -205,7 +223,7 @@ void process_exit(void) //LISMA
     else fd++;
   }
 
-  sema_up(&cur->parent->wait_sema); //wait is done
+  //sema_up(&cur->parent->wait_sema); //wait is done
   if(cur->parent->alive_count == 0) { //free parent_child struct (parent) from memory
     free(cur->parent);
     cur->parent = NULL;

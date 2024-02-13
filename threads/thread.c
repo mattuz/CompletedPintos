@@ -289,6 +289,8 @@ void thread_exit(void)
 	process_exit();
 	for (int i = 2; i<130; i++){
 		if(thread_current()->taken_fds[i] != NULL){
+			//close(i);
+			//thread_current()->taken_fds[i] = NULL;
 
 		}
 	}

@@ -182,7 +182,8 @@ int open (const char *file){
 }
 
 void close (int fd){
-   if(fd < 130 && fd > 1 ){
+  //valid_fd(fd);
+  if(fd < 130 && fd > 1 ){
     struct thread *current_thread = thread_current();
     if(current_thread->files[fd] != NULL){
       file_close(current_thread->files[fd]);
