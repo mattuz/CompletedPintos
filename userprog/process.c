@@ -65,15 +65,19 @@ tid_t process_execute(const char* file_name)
 	tid = thread_create (file_name, PRI_DEFAULT, start_process, aux); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
 	sema_down(&t->sema);
 	free(aux);
-	palloc_free_page(file_name);
+	//palloc_free_page(file_name);
+
+	if (tid == TID_ERROR) {
+		palloc_free_page(fn_copy);
+	}
 
 	struct list_elem *e;
   	for (e = list_begin (&t->children_list); e != list_end (&t->children_list); e = list_next (e)) {
-    	struct parent_child *child = list_entry(e, struct parent_child, child);
-    	if (child->child_tid == NULL) {
-      	// child: the child just created
-      	 	child->child_tid = tid;
-      	if (child->load) {
+    	struct parent_child *f = list_entry(e, struct parent_child, child);
+    	if (f->child_tid == NULL) {
+      	// f: the child just created
+      	 	f->child_tid = tid;
+      	if (f->load) {
         	return tid;
       	}
       	else {
@@ -82,6 +86,7 @@ tid_t process_execute(const char* file_name)
 		}
 
 	}
+	return TID_ERROR;
 	/*if (tid == TID_ERROR)
 	{
 		palloc_free_page(fn_copy);
@@ -113,9 +118,8 @@ static void start_process(void *aux_) //LISMA
 	bool success;
 	struct thread *t = thread_current();
 	struct parent_child *parent_child; 
-  	parent_child = malloc(sizeof(struct parent_child)); 
-
-
+  	parent_child = malloc(sizeof(struct parent_child));
+	struct thread *parent_t = aux->parent_t;
 
 	parent_child->alive_count = 2;
   	parent_child->exited = false;
@@ -143,15 +147,15 @@ static void start_process(void *aux_) //LISMA
 	/* If load failed, quit. */
 	palloc_free_page (aux->file_name); //här står det cmd_line ist för aux-file_name
 
-	t->parent->load = true;
+	parent_child->load = true;
 	if (!success) {
-		sema_up(&t->sema); 
+		sema_up(&parent_t->sema); 
 
-		t->parent->load = false;
-		free(t->parent); 
+		parent_child->load = false;
+		//free(t->parent); 
 		thread_exit ();
 	} //LISMA
-	sema_up(&t->sema); 
+	sema_up(&parent_t->sema); 
 
 
 	/* Start the user process by simulating a return from an
@@ -229,7 +233,7 @@ void process_exit(void) //LISMA
           (f->alive_count)--;
 
           if(f->alive_count == 0) { //free parent_child struct list elements (children) from memory
-			list_remove(e);
+			//list_remove(e);
 			free(f);
 			f = NULL;
           }
