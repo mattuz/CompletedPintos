@@ -202,7 +202,7 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
   	#ifdef USERPROG
 		for(int i = 0; i < 130; i++){
 			t->files[i] = NULL;
-			//t->taken_fds[i] = NULL;
+			t->taken_fds[i] = NULL;
 		}
   	#endif
 	//LIMA
@@ -289,8 +289,8 @@ void thread_exit(void)
 	process_exit();
 	for (int i = 2; i<130; i++){
 		if(thread_current()->taken_fds[i] != NULL){
-			//close(i);
-			//thread_current()->taken_fds[i] = NULL;
+			close(i);
+			thread_current()->taken_fds[i] = NULL;
 
 		}
 	}

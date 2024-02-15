@@ -96,7 +96,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     if(!valid_addr(f->esp + 8)){
       exit(-1);
     }
-    void *buffer_read = *(void**)(f->esp + 8);
+    void *buffer_read = *(void**)(f->esp + 8); //char eller void?
     if(!valid_addr(f->esp + 12)){
       exit(-1);
     }
@@ -182,16 +182,13 @@ int open (const char *file){
 }
 
 void close (int fd){
-  //valid_fd(fd);
-  if(fd < 130 && fd > 1 ){
-    struct thread *current_thread = thread_current();
-    if(current_thread->files[fd] != NULL){
-      file_close(current_thread->files[fd]);
-      current_thread->taken_fds[fd] = NULL;
-      current_thread->files[fd] = NULL;
-    }
+  valid_fd(fd);
+  struct thread *current_thread = thread_current();
+  if(current_thread->files[fd] != NULL){
+    file_close(current_thread->files[fd]);
+    current_thread->taken_fds[fd] = NULL;
+    current_thread->files[fd] = NULL;
   }
-  else return -1;
 }
 
 int read (int fd, void *buffer, unsigned size){
@@ -218,7 +215,10 @@ int read (int fd, void *buffer, unsigned size){
     if((fd < 130) && (fd > 1)){
       struct file *file = thread-> files[fd];
 
-      return file_read(file, buffer, size);;
+      return file_read(file, buffer, size);
+    }
+    else {
+      return -1;
     }
   }
   else {
@@ -255,6 +255,8 @@ int write (int fd, const void *buffer, unsigned size){// denna kanske ska valida
 
 void exit (int status){  
   struct thread *thread = thread_current();
+  printf("%s: exit(%d)\n", thread->name, status);
+
   if(thread->parent != NULL){
     thread->parent->exit_status = status; //skulle detta skyddas av semaphor?
   thread_exit();

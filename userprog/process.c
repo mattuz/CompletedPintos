@@ -193,8 +193,6 @@ void process_exit(void) //LISMA
   }
 
 
-  cur->parent->exited = true;
-  printf("%s: exit(%d)\n", cur->name, cur->parent->exit_status);
   struct list_elem *e;
   for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
            e = list_next (e)) {
@@ -203,31 +201,14 @@ void process_exit(void) //LISMA
           (f->alive_count)--;
 
           if(f->alive_count == 0) { //free parent_child struct list elements (children) from memory
-            //list_remove(e);
-            free(f);
+			list_remove(e);
+			free(f);
+			f = NULL;
           }
 		  else {
 			lock_release(&f->lock);
 		  }
         }
-  if (cur->parent != NULL) { 
-    //sema_up(&cur->parent->sema); //denna up och down kanske inte behövs om vi använder lock?
-  }
-
-  while(fd < 130){
-    if(cur->files[fd] != NULL){
-      file_close(cur->files[fd]);
-	  cur->taken_fds[fd] = NULL;
-      cur->files[fd] = NULL;
-    }
-    else fd++;
-  }
-
-  //sema_up(&cur->parent->wait_sema); //wait is done
-  if(cur->parent->alive_count == 0) { //free parent_child struct (parent) from memory
-    free(cur->parent);
-    cur->parent = NULL;
-  } //LISMA
 
 	/* Destroy the current process's page directory and switch back
 		to the kernel-only page directory. */
