@@ -36,10 +36,10 @@ tid_t process_execute(const char* file_name)
   char *fn_copy;
   tid_t tid;
   struct thread *t = thread_current();
-  struct parent_child *parent_child; 
+  //struct parent_child *parent_child; 
   struct aux *aux;
 
-  parent_child = malloc(sizeof(struct parent_child)); 
+  //parent_child = malloc(sizeof(struct parent_child)); 
   aux = malloc(sizeof(struct aux));
 
   /* Make a copy of FILE_NAME. //CMD_LINE NUMERA
@@ -49,29 +49,48 @@ tid_t process_execute(const char* file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE); //cl_copy
 
-  parent_child->alive_count = 2;
-  parent_child->exited = false;
+  //parent_child->alive_count = 2;
+  //parent_child->exited = false;
   
-  aux->parent_child = parent_child;
+ // aux->parent_child = parent_child;
   aux->file_name = fn_copy;//cl_copy
+  aux->parent_t = t;
 
-  
-  sema_init(&parent_child->sema, 0);
-  sema_init(&parent_child->wait_sema, 0);
-  lock_init(&parent_child->lock); 
+    sema_init(&t->sema, 0);
+  //sema_init(&parent_child->wait_sema, 0);
+  //lock_init(&parent_child->lock); 
 
  
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, aux); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
+	/* Create a new thread to execute FILE_NAME. */
+	tid = thread_create (file_name, PRI_DEFAULT, start_process, aux); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
+	sema_down(&t->sema);
+	free(aux);
+	palloc_free_page(file_name);
 
-  if (tid == TID_ERROR){
-    
-    palloc_free_page (fn_copy);
+	struct list_elem *e;
+  	for (e = list_begin (&t->children_list); e != list_end (&t->children_list); e = list_next (e)) {
+    	struct parent_child *child = list_entry(e, struct parent_child, child);
+    	if (child->child_tid == NULL) {
+      	// child: the child just created
+      	 	child->child_tid = tid;
+      	if (child->load) {
+        	return tid;
+      	}
+      	else {
+        	return TID_ERROR;
+      		}
+		}
+
+	}
+	/*if (tid == TID_ERROR)
+	{
+		palloc_free_page(fn_copy);
   } else {
     parent_child->child_tid = tid;
     list_push_back(&t->children_list, &parent_child->child); 
   }
-  sema_down(&parent_child->sema);
+  //sema_down(&parent_child->sema);
+  
   
   //Kolla om load har failat
   if (parent_child->load == false) {
@@ -79,7 +98,7 @@ tid_t process_execute(const char* file_name)
   }
   else {
     return tid;
-  }
+  }*/
 }//LISMA
 
 /* A thread function that loads a user process and starts it
@@ -93,8 +112,24 @@ static void start_process(void *aux_) //LISMA
 	struct intr_frame if_;
 	bool success;
 	struct thread *t = thread_current();
+	struct parent_child *parent_child; 
+  	parent_child = malloc(sizeof(struct parent_child)); 
 
+
+
+	parent_child->alive_count = 2;
+  	parent_child->exited = false;
+	parent_child->exit_status = 0;
+	parent_child->child_tid = NULL;
+	list_init(&(t->children_list)); //kanske ej behövs
+	list_push_back(&t->children_list, &parent_child->child); 
+
+
+	aux->parent_child = parent_child;
 	t->parent = aux->parent_child;
+
+	sema_init(&parent_child->wait_sema, 0);
+  	lock_init(&parent_child->lock); 
 
 	/* Initialize interrupt frame and load executable. */
 	memset(&if_, 0, sizeof if_);
@@ -110,13 +145,13 @@ static void start_process(void *aux_) //LISMA
 
 	t->parent->load = true;
 	if (!success) {
-		sema_up(&t->parent->sema); 
+		sema_up(&t->sema); 
 
 		t->parent->load = false;
 		free(t->parent); 
 		thread_exit ();
 	} //LISMA
-	sema_up(&t->parent->sema); 
+	sema_up(&t->sema); 
 
 
 	/* Start the user process by simulating a return from an
@@ -156,14 +191,7 @@ process_wait (tid_t child_tid UNUSED) //LISMA
 		exit_status = f->exit_status;
 		list_remove(e);
 		free(f);
-      	//if (f->exited) {
 		return exit_status;
-      //} 
-      	//else {
-        	//wait
-        	//sema_down(&f->wait_sema);
-        	//return f->exit_status;
-      //}
     }
   }
         

@@ -11,6 +11,7 @@ void process_activate (void);
 struct aux { //LIMA HÄRIFRÅN
     char *file_name;
     struct parent_child *parent_child;
+    struct thread *parent_t;
     //"vad som mer kan behövas"
 };
 #endif /* userprog/process.h */

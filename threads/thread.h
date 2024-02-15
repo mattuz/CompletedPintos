@@ -111,7 +111,7 @@ struct thread
     struct file *files[130]; /* A threads open files can be found
 					   on the index of their FD. */
     int taken_fds[130];
-
+	struct semaphore sema;
 #endif
 
     /* Owned by thread.c. */
@@ -124,7 +124,7 @@ struct thread
    int exit_status;
    int alive_count;
    bool load;
-   struct semaphore sema;
+   //struct semaphore sema;
    struct semaphore wait_sema;
    struct list_elem child;
    struct lock lock;
