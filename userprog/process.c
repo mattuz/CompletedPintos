@@ -21,103 +21,131 @@
 #include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
-static bool load(const char* file_name, void (**eip)(void), void** esp);
+static bool load(const char* cmd_line, void (**eip)(void), void **esp);
 static void dump_stack(const void* esp);
+
+struct aux { //LIMA HÄRIFRÅN
+    char *cmd_line;
+	struct thread *t_parent; 
+    //struct parent_child *parent_child;
+};
 
 /* Starts a new thread running a user program loaded from
 	CMD_LINE.  The new thread may be scheduled (and may even exit)
 	before process_execute() returns.  Returns the new process's
 	thread id, or TID_ERROR if the thread cannot be created. */
 //tid_t process_execute(const char* cmd_line)
-tid_t process_execute(const char* file_name)
+tid_t process_execute(const char *cmd_line)
 
 {//LISMA
   //Här är vi inne i föräldern
-  char *fn_copy;
-  tid_t tid;
-  struct thread *t = thread_current();
-  struct parent_child *parent_child; 
-  struct aux *aux;
 
-  parent_child = malloc(sizeof(struct parent_child)); 
-  aux = malloc(sizeof(struct aux));
+  struct thread *t_cur = thread_current();
+  sema_init(&(t_cur->pc_sema), 0);
 
   /* Make a copy of FILE_NAME. //CMD_LINE NUMERA
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL) //cl_copy numera!!
+  char *cl_copy = palloc_get_page (0);
+  if (cl_copy == NULL) //cl_copy numera!!
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE); //cl_copy
+  strlcpy (cl_copy, cmd_line, PGSIZE); //cl_copy
 
-  parent_child->alive_count = 2;
-  parent_child->exited = false;
-  
-  aux->parent_child = parent_child;
-  aux->file_name = fn_copy;//cl_copy
+  char *file_name = palloc_get_page (0);
 
-  
-  sema_init(&parent_child->sema, 0);
-  sema_init(&parent_child->wait_sema, 0);
-  lock_init(&parent_child->lock); 
-
- 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, aux); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
-
-  if (tid == TID_ERROR){
-    
-    palloc_free_page (fn_copy);
-  } else {
-    parent_child->child_tid = tid;
-    list_push_back(&t->children_list, &parent_child->child); 
+/*Läs av file name från cmd_line, avsluta med NULL*/
+  if(file_name == NULL){
+	return TID_ERROR;
   }
-  sema_down(&parent_child->sema);
+  int num_chars = 0;
+  char char_cur = cmd_line[0];
+  int max = 100; 
+  while(char_cur != ' '){
+	max--;
+	if (max == 0){
+		break; //saknar null terminator
+	}
+	file_name[num_chars] = char_cur;
+	num_chars++;
+	char_cur = cmd_line[num_chars];
+  }
+  file_name[num_chars] = NULL;
   
-  //Kolla om load har failat
-  if (parent_child->load == false) {
-    return -1;
-  }
-  else {
-    return tid;
-  }
+  struct aux *args = (struct aux *)malloc(sizeof(struct aux));
+  args->cmd_line = cl_copy;
+  args->t_parent = t_cur;
+
+  tid_t tid_c = thread_create (file_name, PRI_DEFAULT, start_process, args); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
+  sema_down(&(t_cur->pc_sema));
+  free(args);
+  palloc_free_page(file_name);
+
+  if (tid_c == TID_ERROR){
+    palloc_free_page (cl_copy);
+	} 
+	
+	// Tilldela barnet till pc mapping och se efter att det laddat successfully
+	struct list_elem *elem;
+	for(elem = list_begin (&t_cur->children_list); elem != list_end (&t_cur->children_list); elem = list_next (elem)){
+		struct parent_child *pc_child = list_entry(elem, struct parent_child, child); 
+		if(pc_child->child_tid == NULL){ //pc_child är barnet som just skapats
+			pc_child->child_tid = tid_c;
+			if(pc_child->load){
+				return tid_c;
+			}
+			else {
+				return TID_ERROR;
+			}
+		}
+	}
+	return TID_ERROR;
+
 }//LISMA
 
 /* A thread function that loads a user process and starts it
 	running. */
-static void start_process(void *aux_) //LISMA
+static void start_process(void *args) //LISMA
 {									//aux är numera cmd_line_
 	//char* cmd_line = cmd_line_; detta är nytt
 
 	//Här inne är vi inne i barnet
-	struct aux *aux= (struct aux*)aux_;
+	struct thread *t_cur = thread_current(); //Ny process
+	struct thread *t_parent = ((struct aux *)args)-> t_parent;
 	struct intr_frame if_;
-	bool success;
-	struct thread *t = thread_current();
+	char *cmd_line = ((struct aux *)args)->cmd_line;
+	
 
-	t->parent = aux->parent_child;
+	// Strukturera parent_child mapping
+	struct parent_child *parent_child = malloc(sizeof(struct parent_child));
+	sema_init(&parent_child->wait_sema, 0);
+	
+	t_cur->parent = parent_child;
+	parent_child->exit_status = 0;
+	parent_child->alive_count = 2;
+	parent_child-> child_tid = NULL; // Sätt i process_execute()
+
+	lock_init(&parent_child->alive_lock);
+	list_init(&(t_cur->children_list));
+	list_push_back(&(t_parent->children_list), &(parent_child->child));
+	
 
 	/* Initialize interrupt frame and load executable. */
 	memset(&if_, 0, sizeof if_);
 	if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
-	success = load (aux->file_name, &if_.eip, &if_.esp);
-	// Note: load requires the file name only, not the entire cmd_line
-	//success = load(cmd_line, &if_.eip, &if_.esp); NY (namnet mest)
+	parent_child->load = load(cmd_line, &if_.eip, &if_.esp);
+
+
 
 	/* If load failed, quit. */
-	palloc_free_page (aux->file_name); //här står det cmd_line ist för aux-file_name
+	palloc_free_page (cmd_line); //här står det cmd_line ist för aux-file_name
 
-	t->parent->load = true;
-	if (!success) {
-		sema_up(&t->parent->sema); 
+	if (!parent_child->load) {
+		sema_up(&(((struct thread *)t_parent)->pc_sema)); 
 
-		t->parent->load = false;
-		free(t->parent); 
 		thread_exit ();
 	} //LISMA
-	sema_up(&t->parent->sema); 
-
+	sema_up(&(((struct thread *)t_parent)->pc_sema)); 
 
 	/* Start the user process by simulating a return from an
 		interrupt, implemented by intr_exit (in
@@ -142,77 +170,70 @@ int
 process_wait (tid_t child_tid UNUSED) //LISMA
 {
   //while(true){};
-  struct thread *cur = thread_current ();  
-  struct list_elem *e;
+  struct thread *t_cur = thread_current ();  
+  struct list_elem *elem;
   int exit_status;
+  struct parent_child *pc_child = NULL;
 
-  for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
-           e = list_next (e)) {
+  for(elem = list_begin (&t_cur->children_list); elem != list_end (&t_cur->children_list);
+           elem = list_next (elem)) {
+		
 
-	//Child = f
-	struct parent_child *f = list_entry (e, struct parent_child, child);
-    if (child_tid == f->child_tid && f->child_tid != NULL){
-		sema_down(&f->wait_sema);
-		exit_status = f->exit_status;
-		list_remove(e);
-		free(f);
-      	//if (f->exited) {
-		return exit_status;
-      //} 
-      	//else {
-        	//wait
-        	//sema_down(&f->wait_sema);
-        	//return f->exit_status;
-      //}
-    }
+
+	struct parent_child *child_it = list_entry (elem, struct parent_child, child);
+    if (child_it->child_tid == child_tid){
+		pc_child = child_it; //Child hittad
+		break;
+	}
   }
-        
-  
-return -1;
+  if (pc_child != NULL){
+	sema_down(&pc_child->wait_sema);
+	exit_status = pc_child->exit_status;
+	list_remove(elem);
+	free(pc_child);
+	pc_child = NULL;
+	return exit_status;
+  }
+  return -1;
+
 }//LISMA
 
 /* Free the current process's resources. */
 void process_exit(void) //LISMA
 {
-  struct thread *cur = thread_current ();
+  struct thread *t_cur = thread_current ();
   uint32_t *pd;
-  int fd = 2;
 
-  if (cur->parent != NULL) { 
-    lock_acquire(&cur->parent->lock); //Kolla om parent är null. sätt parent null i init_thread
-    cur->parent->alive_count--;
-	if (cur->parent->alive_count == 0){
-		free(cur->parent);
-		cur->parent = NULL;
-		
+  if (t_cur->parent != NULL) { 
+    lock_acquire(&t_cur->parent->alive_lock); //Kolla om parent är null. sätt parent null i init_thread
+    (t_cur->parent->alive_count)--;
+	if (t_cur->parent->alive_count == 0){ //Parent har väntat färdigt på child (t_cur)
+		free(t_cur->parent);
+		t_cur->parent = NULL;
 	}
-	else {
-		sema_up(&cur->parent->wait_sema);
-		lock_release(&cur->parent->lock);
+	else { //Child (t_cur) exit före paremt och måste vänta
+		sema_up(&t_cur->parent->wait_sema);
+		lock_release(&t_cur->parent->alive_lock);
 	}
   }
 
-
-  struct list_elem *e;
-  for(e = list_begin (&cur->children_list); e != list_end (&cur->children_list);
-           e = list_next (e)) {
-          struct parent_child *f = list_entry (e, struct parent_child, child);
-          lock_acquire(&f->lock); //klagar här 
-          (f->alive_count)--;
-
-          if(f->alive_count == 0) { //free parent_child struct list elements (children) from memory
-			list_remove(e);
-			free(f);
-			f = NULL;
-          }
-		  else {
-			lock_release(&f->lock);
-		  }
-        }
-
-	/* Destroy the current process's page directory and switch back
+//har några barn exitat
+  while(!list_empty(&(t_cur->children_list))){
+	struct list_elem *elem = list_pop_front(&(t_cur->children_list));
+	struct parent_child *pc_child = list_entry(elem, struct parent_child, child);
+	lock_acquire(&pc_child->alive_lock);
+	(pc_child->alive_count)--;
+	if(pc_child->alive_count == 0){ //Child har väntat färdigt på parent(t_cur)
+		free(pc_child);
+		pc_child = NULL;
+	}
+	else { //Parent (t_curr) exit före child och måste vänta
+		lock_release(&pc_child->alive_lock);
+	}
+  }
+  /* Destroy the current process's page directory and switch back
 		to the kernel-only page directory. */
-	pd = cur->pagedir;
+	pd = t_cur->pagedir;
 	if (pd != NULL) {
 		/* Correct ordering here is crucial.  We must set
 			cur->pagedir to NULL before switching page directories,
@@ -221,10 +242,12 @@ void process_exit(void) //LISMA
 			directory before destroying the process's page
 			directory, or our active page directory will be one
 			that's been freed (and cleared). */
-		cur->pagedir = NULL;
+		t_cur->pagedir = NULL;
 		pagedir_activate(NULL);
 		pagedir_destroy(pd);
 	}
+
+	
 }
 
 /* Sets up the CPU for running user code in the current
@@ -322,10 +345,11 @@ load (const char *cmd_line, void (**eip) (void), void **esp) //cmd_line har bytt
 {
 	struct thread* t = thread_current();
 	struct Elf32_Ehdr ehdr;
-	struct file* file = NULL;
+	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	char file_copy;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -340,68 +364,57 @@ load (const char *cmd_line, void (**eip) (void), void **esp) //cmd_line har bytt
     goto done;
   } //DENNA GÖRS NU LÄNGRE NER
 
-  //här delar vi upp filename/cmd_line i namn + argument.
-  //Lägg var och en på stacken 
+  // arg null terminator. Ta bort null?
+  *esp -= sizeof(NULL); // esp = stack pointer
+  **((char** *)esp) = NULL;
 
-  char *token, *save_ptr;
-  char *argv[32]; //vill vi alokera minne här då vi sen bara ska ha pekare till den på stacken??
-  int no = 0; //detta är argc
-  int zerow = 0;
-
-  for (token = strtok_r (cmd_line, " ", &save_ptr); token != NULL;
-    token = strtok_r (NULL, " ", &save_ptr)) {
-      *esp = *esp - strlen(token)-1;
-      argv[no] = *esp; 
-      //printf("esp pos: %p \n", *esp);
-      //printf ("'%s'\n", token);
-      memcpy(*esp, token, strlen(token)+1);
-      no += 1;
-    }
-
-  const char *file_name = argv[0]; //file_name behövs senare så vi tar ut det
-    //måste ändra esp själva, stringlen() borde ge oss hur långt vi ska hoppa i adressen
-  int argc =no;
-    // **är en pekare till en pekare 
-    // (dvs adressen till en annan adress till någon data)
-    // && så ändrar man datan
-    // & så ändrar man adressen till datan
-    //eller???
-
-  for (int i=1; i<5; i++){ //Hitta närmaste jämnt delbara med 4 
-      if ((int)(*esp) % 4 == 0){
-      break;
-    } //denna funkar nu, men frågan är om den ska ge plats åt en hel "pekare"
-    *esp = *esp-1;
-  }
-
-  void *memargv;
-  *esp = *esp - 4;
-
-  for(int j=no; j>=0; j--){
-    //pusha upp på stacken
-    if (j == no) {
-      memcpy(*esp, &zerow, 4);
-    } else {
-      memcpy(*esp, &argv[j], 4);
-     
-    }
-    memargv = *esp; 
-    *esp = *esp - 4;
-  }
-  int* eit = 8;
-  //**esp = *esp - 4; //lägg till adressen till argv (som ligger på platsen innan)
-  memcpy(*esp, &memargv, 4);
-  *esp = *esp - 4;
-  //**esp = argc; //lägg till argc
-  memcpy(*esp, &argc, 4);
-  *esp = *esp - 4;
-  //**esp = eip; //lägg till return address
-  memcpy(*esp, &eip, 4);
-  //*esp = *esp - 4;
-
+  //Lägg args på stacken
+  *esp -= strlen(cmd_line); //flytta stackpekare så att hela file_name får plats
+  char* arg_ptr = memcpy(*esp, cmd_line, strlen(cmd_line)); // kopierar från file_name till esp
   
+  //Beräkna argc
+  int argc = 1; //varför? För att ett arg alltid är minst 1 lång.
+  bool pre_space = false;
+  for (int i = 0; cmd_line[i]; i++) { 
+	if(cmd_line[i] == ' ') {
+		if(pre_space) {
+			pre_space = false;
+			continue;
+		}
+		pre_space = true;
+		argc++;
+	}
+	else{
+		pre_space = false;
+	}
+  }
 
-  strlcpy (thread_current()->name, file_name, sizeof thread_current()->name);
+  //Gör stacken delbar med 4
+  *esp -= (uintptr_t) *esp % 4;
+  *esp -= sizeof(char*) * (argc+1);
+  char **argv;
+  argv = ((char **)*esp);
+
+
+  //Lägg pekare till arg på stacken
+  char *token;
+  char *save_ptr;
+  int arg_count = 0;
+  for(token = strtok_r(arg_ptr, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+	argv[arg_count] = token;
+	arg_count++;
+  }
+  argv[argc] = NULL;
+  char *file_name = argv[0];
+
+  //Lägg argv och argc på stacken
+  *esp -= sizeof(argv);
+  **((char** *)esp) = argv;
+  *esp -= sizeof(argc);
+  **((int**)esp) = argc;
+  *esp -= sizeof(NULL);
+  **((char** *)esp) = NULL;
+
 
    /* Uncomment the following line to print some debug
      information. This will be useful when you debug the program
@@ -616,7 +629,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, //uint32_t page_offs
 	  size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 	  //NY OVAN, vår är den som står kvar
       //if (page_read_bytes > PGSIZE)
-	  //     page_read_bytes = PGSIZE; //Detta fanns inte heller kvar
+	    //   page_read_bytes = PGSIZE; //Detta fanns inte heller kvar. PROBELM?
 
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 

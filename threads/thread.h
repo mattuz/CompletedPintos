@@ -90,48 +90,52 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
 	int priority;					/* Priority. */
 	struct list_elem allelem;//NY	/* List element for all threads list. */
-	//LIMA
-	/* List of all the children of a thread */
-    struct list children_list;
-
-    /* Pointer to parent_child struct */
-    struct parent_child *parent; 
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     
     /* List och sleeping treads*/
-    struct list_elem sleeping_elem;
+    struct list_elem sleeping_elem; //VÅR? NÄ (emil har inte denna...)
 
     /* Time to sleep */
-    int64_t sleep_time;
+    int64_t sleep_time; //VÅR? NÄ (emil har inte denna...)
+
+	
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
+	
+/* List of all the children of a thread */
+    struct list children_list;
+	struct parent_child *parent;
+
+	/* Pointer to parent_child struct */
+    
     uint32_t *pagedir;           /* Page directory. */
     struct file *files[130]; /* A threads open files can be found
 					   on the index of their FD. */
-    int taken_fds[130];
+    //int taken_fds[130]; //kanske skita i denna?
 
+	struct semaphore pc_sema;
+
+	struct parent_child
+  {
+   tid_t child_tid;
+   int exit_status;
+   int alive_count;
+   bool load;
+   struct semaphore wait_sema;
+   struct list_elem child;
+   struct lock alive_lock;
+   //bool exited; // kanske inte behöver denna?
+  };
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-  struct parent_child
-  {
-   tid_t child_tid;
-   int exit_status;
-   int alive_count;
-   bool load;
-   struct semaphore sema;
-   struct semaphore wait_sema;
-   struct list_elem child;
-   struct lock lock;
-   bool exited;
-   
-   //whatever else we need :)
-  };
+  
 
 /* If false (default), use round-robin scheduler.
 	If true, use multi-level feedback queue scheduler.

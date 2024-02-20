@@ -9,9 +9,6 @@
 #include "devices/shutdown.h"
 
 
-
-
-bool create (const char *file, unsigned initial_size);
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -24,287 +21,328 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   //printf ("system call!\n");
-  int *stack_pointer = (int*) f->esp;
-  if(!valid_addr(stack_pointer)){
-    exit(-1);
-  }
-  if(!valid_addr(stack_pointer + 4)){
-    exit(-1);
-  }
-  if(!valid_addr(stack_pointer + 8)){
-    exit(-1);
-  }
-  if(!valid_addr(stack_pointer + 12)){
-    exit(-1);
-  }
   
-  switch(*stack_pointer) {
-  case 0:
+  valid_addr(f->esp);
+  
+  int syscall_num = *(int*)(f->esp);
+  //void *buffer;
+
+  //const char *file;
+  //int fd;
+  //unsigned size;
+  
+  switch(syscall_num) {
+  case SYS_HALT: ;
     halt();
     break;
-  case 1: ;
-    if(!valid_addr(f->esp + 4)){
-      exit(-1);
-    }
-    int status = *(int*)(f->esp + 4);
+
+  case SYS_EXIT: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4;
+    int status = *(int*)arg1;
     exit(status);
     break;
-  case 2: ;
-    if(!valid_addr(f->esp + 4)){
-        exit(-1);
-      }
-    char *cmd_line = *(char **)(f->esp + 4);
+  }
+    
+
+  case SYS_EXEC: {
+
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4;
+   
+    
+  
+    char *cmd_line = *(const char **)arg1;
+    valid_str(cmd_line);
     f->eax = exec(cmd_line);
     break;
-  case 3: ;
-    if(!valid_addr(f->esp + 4)){
-        exit(-1);
-      }
-    tid_t *child_tid = (tid_t **)(f->esp + 4);
+  }
+    
+
+  case SYS_WAIT: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4;
+  
+    tid_t child_tid = *(tid_t *)arg1;
     f->eax = wait(child_tid);
     break;
-  case 4: ;
-    if(!valid_addr(f->esp + 4)){
-        exit(-1);
-      }
-    char *file_create = *(char **)(f->esp + 4);
-    if(!valid_addr(f->esp + 8)){
-      exit(-1);
-    }
-    unsigned initial_size_create = *(unsigned*)(f->esp + 8);
-    //int file_create = convert_to_kernel_pointer((f->esp + 4));
-    f->eax = create(file_create, initial_size_create);
-    break;
-  case 5: ;
-    //REMOVE
-    break;
-  case 6: ;
-    if(!valid_addr(f->esp + 4)){
-      exit(-1);
-    }
-    char *file_open = *(char**) (f->esp + 4);
-    f->eax = open(file_open);
-    break;
-  case 7: ;
-    //FILESIZE
-    break;
-  case 8: ;
-    if(!valid_addr(f->esp + 4)){
-      exit(-1);
-    }
-    int fd_read = *(int*) (f->esp + 4);
-    if(!valid_addr(f->esp + 8)){
-      exit(-1);
-    }
-    void *buffer_read = *(void**)(f->esp + 8); //char eller void?
-    if(!valid_addr(f->esp + 12)){
-      exit(-1);
-    }
-    unsigned size_read = *(unsigned*) (f->esp + 12);
-    f->eax = read(fd_read, buffer_read, size_read);
-    break;
-  case 9: ;
-    if(!valid_addr(f->esp + 4)){
-        exit(-1);
-      }
-    int fd_write = *(int*) (f->esp + 4);
-    if(!valid_addr(f->esp + 8)){
-      exit(-1);
-    }
-    void *buffer_write = *(void**)(f->esp + 8);
-    if(!valid_addr(f->esp + 12)){
-      exit(-1);
-    }
-    unsigned length_write = *(unsigned*) (f->esp + 12);
-    f->eax = write(fd_write, buffer_write, length_write);
-    break;
-  case 10: ;
-    //SEEK
-    break;
-  case 11: ;
-    //TELL
-    break;
-  case 12: ;
-    if(!valid_addr(f->esp + 4)){
-      exit(-1);
-    }
-    int fd_close = *(int*) (f->esp + 4);
-    close(fd_close);
+  }
+    
+
+  case SYS_CREATE: {
+    valid_addr(f->esp+4);
+    valid_addr(f->esp+8);
+    void *arg1 = f->esp+4;
+    void *arg2 = f->esp+8;
+   
+    
+  
+    const char *file = *(const char **)arg1;
+    unsigned initial_size_create = *(unsigned*)arg2;
+    valid_str(file);
+    f->eax = create(file, initial_size_create);
     break;
   }
+    
 
-  //thread_exit ();
-}
+  case SYS_REMOVE: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4;  
+ 
+    const char *file_name = *(const char**)arg1;
+    valid_str(file_name);
+    f->eax = remove(file_name);
+    break;
+  }
+    
 
+  case SYS_OPEN: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4; 
+  
+    const char *file = *(const char**)arg1;
+    valid_str(file);
+    f->eax = open(file);
+    break;
+  }
+    
 
-int convert_to_kernel_pointer(const void *pointer){
-  void *ptr=pagedir_get_page(thread_current()->pagedir, pointer);
-  if (!ptr){
+  case SYS_FILESIZE: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4;
+ 
+    int fd = *(int*)arg1;
+    valid_fd(fd);
+    f->eax = file_size(fd);
+    break;
+  }
+    
+
+  case SYS_READ: {
+    valid_addr(f->esp+4);
+    valid_addr(f->esp+8);
+    valid_addr(f->esp+12);
+    void *arg1 = f->esp+4;
+    void *arg2 = f->esp+8;
+    void *arg3 = f->esp+12;  
+
+    int fd = *(int*)arg1;
+    void *buffer = *(void**)arg2; 
+    unsigned size = *(unsigned*)arg3;
+    valid_fd(fd);
+    valid_buff(buffer, size);
+  
+    f->eax = read(fd, buffer, size);
+    break;
+  }
+    
+
+  case SYS_WRITE: {
+    valid_addr(f->esp+4);
+    valid_addr(f->esp+8);
+    valid_addr(f->esp+12);
+    void *arg1 = f->esp+4;
+    void *arg2 = f->esp+8;
+    void *arg3 = f->esp+12;  
+
+    int fd = *(int*)arg1;
+    void *buffer = *(char**)arg2;
+    unsigned size = *(unsigned*)arg3;
+    valid_fd(fd);
+    valid_buff(buffer, size);
+    f->eax = write(fd, buffer, size);
+    break;
+  }
+    
+
+  case SYS_SEEK: {
+    valid_addr(f->esp+4);
+    valid_addr(f->esp+8);
+
+    void *arg1 = f->esp+4;
+    void *arg2 = f->esp+8;
+  
+  
+    int fd = *(int*)arg1;
+    unsigned position = *(unsigned*)arg2; 
+    valid_fd(fd);
+    seek(fd, position);
+    break;
+  }
+    
+
+  case SYS_TELL: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4; 
+  
+    int fd = *(int*)arg1;
+    valid_fd(fd);
+    f->eax = tell(fd);
+    break;
+
+  }
+    
+
+  case SYS_CLOSE: {
+    valid_addr(f->esp+4);
+    void *arg1 = f->esp+4; 
+  
+    int fd= *(int*)arg1;
+    valid_fd(fd);
+    close(fd);
+    break;
+  }
+    
+
+  default:; //Syscall finns inte
     exit(-1);
-  } else return (int)ptr;
+  }
 }
+
 
 void halt(void){
   shutdown_power_off();
 }
 
+
+void exit (int status){  
+  printf("%s: exit(%d)\n", thread_current()->name, status);
+  if(thread_current()->parent != NULL){
+    thread_current()->parent->exit_status = status; //skulle detta skyddas av semaphor?
+  thread_exit();
+  } 
+}
+
+
+tid_t exec (const char *cmd_line){
+  tid_t tid = process_execute(cmd_line);
+  return tid;
+}
+
+
 bool create (const char *file, unsigned initial_size){
-  //validate input
-  if(!valid_str(file)){
-    exit(-1);
-  }
   return filesys_create(file, initial_size);
 }
 
-int open (const char *file){
-  //validate input
-  if(!valid_str(file)){
-    exit(-1);
-  }
 
+bool remove(const char *file_name){
+  return filesys_remove(file_name);
+}
+
+
+int open (const char *file){
   struct thread *current_thread = thread_current();
   struct file *my_file = filesys_open(file);
-  if (my_file == NULL){
+  if(my_file == NULL){
     return -1;
   }
-  else {
-    int fd = fd_handler(current_thread);
-
-    if (fd == NULL){
-      return -1;
-    }
-    else {
-      current_thread->files[fd] = my_file;
-      return fd;
+  for(int i = 2; i<130; i++){
+    if (current_thread->files[i] == NULL){
+      current_thread->files[i] = my_file;
+      return i;
     }
   }
+ 
   return -1;
 }
 
-void close (int fd){
-  valid_fd(fd);
-  struct thread *current_thread = thread_current();
-  if(current_thread->files[fd] != NULL){
-    file_close(current_thread->files[fd]);
-    current_thread->taken_fds[fd] = NULL;
-    current_thread->files[fd] = NULL;
-  }
+
+int file_size(int fd){
+  struct thread *thread = thread_current();
+  return file_length(thread_current()->files[fd]);
 }
+
 
 int read (int fd, void *buffer, unsigned size){
-  valid_fd(fd);
-  if (!valid_addr(buffer)){
-    exit(-1);
-  }
   struct thread *thread = thread_current();
-
+  int bytes_read = 0;
   if (fd == 0){
-    int bytes_read = 0;
-    for(unsigned int i = 0; i < size; i++) {
-      *(char*)buffer = input_getc();
-      buffer += sizeof(char);
-      if (!valid_addr(buffer)){
-        exit(-1);
+    for(unsigned i = 0; i < size; i++) {
+      ++bytes_read;
+      input_getc();
       }
-      bytes_read += sizeof(char);
-    }
-    return bytes_read;
-  }
-  
-  else if(thread->files[fd]!= NULL){
-    if((fd < 130) && (fd > 1)){
-      struct file *file = thread-> files[fd];
-
-      return file_read(file, buffer, size);
-    }
-    else {
-      return -1;
-    }
-  }
-  else {
-    //return -1;
-    exit(-1);
-  }
-}
-
-int write (int fd, const void *buffer, unsigned size){// denna kanske ska validateas mer (hela size)
-  //validate input
-  valid_fd(fd);
-
-  if (!valid_addr(buffer)){
-    exit(-1);
-  }
-
-  struct thread *thread = thread_current();
-  struct file *file = thread-> files[fd];
-
-  if(fd < 0 || fd > 129){
-    return -1;
+      return bytes_read;
   }
   else if (fd == 1){
-
-    putbuf((char*)buffer, (size_t)size);
-    return size;
-
-  }
-  else if(fd < 130 && fd > 1){
-    return file_write(file, buffer, size);
-  } else {
-    return -1;}
-}
-
-void exit (int status){  
-  struct thread *thread = thread_current();
-  printf("%s: exit(%d)\n", thread->name, status);
-
-  if(thread->parent != NULL){
-    thread->parent->exit_status = status; //skulle detta skyddas av semaphor?
-  thread_exit();
-  }
-  
-}
-
-int fd_handler (struct thread *thread){
-  int possible_fd = 2;
-  while (possible_fd < 130){
-    if (thread->taken_fds[possible_fd] == possible_fd){
-      possible_fd++;
-    } else {
-      thread->taken_fds[possible_fd] = possible_fd;
-      return possible_fd;
-    }
-  }
-  return NULL;
-}
-
-tid_t exec (const char *cmd_line){
-  //validate input
-  if(!valid_str(cmd_line)){
-    exit(-1);
-  }
-
-  tid_t tid = process_execute(cmd_line);
-  if (tid == TID_ERROR) {
     return -1;
-  } else {
-    return tid;
+  }
+  else {
+    if(thread->files[fd] == NULL){ //Filen existerar inte
+      return -1;
+    }
+    return (int) file_read(thread->files[fd], buffer, size);
   }
 }
 
-//Should wait until a given child has exitecall.c:172:14: error: expected ‘;’ before numeric constant
+
+int write (int fd, const void *buffer, unsigned size){
+  struct file *file = thread_current()->files[fd];
+  int written = 0;
+  //if(fd == 1){
+  if(fd == STDOUT_FILENO){
+    putbuf(buffer, size);
+    return size;
+  }
+  else if(fd > 129 || fd < 2){
+    return -1;
+  }
+  else if(file == NULL){
+    return -1;
+    
+  } else {
+    written = file_write(file, buffer, size);
+  }
+  return written;
+}
+
+
+void seek(int fd, unsigned position){
+  //set cur pos i open file till position. Om större än fil, sätt end of file. 
+  struct thread *current_thread = thread_current();
+  if(position > file_length(current_thread->files[fd])){
+    file_seek(current_thread->files[fd], file_size(current_thread->files[fd]));    
+  } else {
+    file_seek(current_thread->files[fd], position);
+  }
+}
+
+
+unsigned tell(int fd){
+  struct thread *current_thread = thread_current();
+  return file_tell(current_thread->files[fd]);
+}
+
+
+void close (int fd){
+  struct thread *current_thread = thread_current(); 
+  file_close(current_thread->files[fd]);
+  current_thread->files[fd] = NULL;
+}
+
+
 int wait (tid_t child_tid){ //returns exit status
   return process_wait(child_tid);
 }
 
-//Kan optimeras till en rad <3
-bool valid_addr (void *ptr){ //skrev void så länge, vet inte om det alltid kommer vara samma slags pointer
-  if (is_user_vaddr(ptr) 
-  && (pagedir_get_page(thread_current()->pagedir,ptr)!=NULL) 
-  && ptr != NULL){
-    return true;
+
+void valid_buff(void *buffer, unsigned size){
+  if (buffer == NULL){
+    exit(-1);
   }
-  return false;
+  unsigned int num_ptr = 0;
+  while(num_ptr != size){
+    valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
+    num_ptr++;
+  }
 }
+
+
+void valid_addr (void *ptr){ 
+  if(ptr == NULL || !is_user_vaddr(ptr) || pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
+    exit(-1);
+  }
+}
+
 
 void valid_fd (int fd){
   if (fd < 0 || fd > 129){
@@ -312,21 +350,24 @@ void valid_fd (int fd){
   }
 }
 
-bool valid_str (const char *string){
-  if (string == NULL) { //Om det inte ens pekar på en string
-    return false;
-  }
-  
-  //for(int i = 0; i<strlen(string); i++)
+
+void valid_str (const char *string){
   int i = 0;
-  while (true){
-    if (!valid_addr(&string[i])) { //om det är något whack. 
-      return false;
-    } 
-    if (string[i]=='\0'){ //oklart om man kan jämföra såhär, måste nog castastring eller nåt
-      return true;
-    }
+  if (string == NULL) {
+    exit(-1);
+  }
+  do {
+    valid_addr((void*)&(string[i]));
     i++;
   }
+  while(string[i] != '\0');
 }
 
+
+//ÖVERFLÖDIG?
+int convert_to_kernel_pointer(const void *pointer){
+  void *ptr=pagedir_get_page(thread_current()->pagedir, pointer);
+  if (!ptr){
+    exit(-1);
+  } else return (int)ptr;
+}

@@ -35,7 +35,7 @@ void timer_init(const uint16_t timer_freq)
 	TIMER_FREQ = timer_freq;
 	pit_configure_channel(0, 2, TIMER_FREQ);
 	intr_register_ext(0x20, timer_interrupt, "8254 Timer");
-	  list_init(&sleeping_threads);
+	list_init(&sleeping_threads);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -70,7 +70,7 @@ int64_t timer_ticks(void)
 	int64_t t = ticks;
 	intr_set_level(old_level);
 	// LIMA
-	// barrier();
+	 barrier();
 	// LIMA
 	return t;
 }
@@ -82,10 +82,23 @@ int64_t timer_elapsed(int64_t then)
 	return timer_ticks() - then;
 }
 
+struct thread_elem {
+  struct thread *t;
+  int wake_up;
+  struct list_elem elem;
+};
+
+bool wake_comp (const struct list_elem *a, const struct list_elem *b, void *aux) {
+  struct thread_elem *thread_elem_1 = list_entry (a, struct thread_elem, elem);
+  struct thread_elem *thread_elem_2 = list_entry (b, struct thread_elem, elem);
+  return thread_elem_1->wake_up < thread_elem_2->wake_up;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
 	be turned on. */
 void timer_sleep(int64_t ticks)
 {
+
 	//int64_t start = timer_ticks();
 
 	//ASSERT(intr_get_level() == INTR_ON);
@@ -101,7 +114,7 @@ void timer_sleep(int64_t ticks)
     	list_push_back(&sleeping_threads, &t->sleeping_elem);
     	thread_block();
     	//free(t);
-    	intr_set_level(old_value);
+    	intr_set_level(old_value); //18/2
   }//LIMA*/
 }
 
@@ -168,7 +181,6 @@ void timer_print_stats(void)
 	printf("Timer: %" PRId64 " ticks\n", timer_ticks());
 }
 
-/* Timer interrupt handler. */
 static void timer_interrupt(struct intr_frame* args UNUSED)
 {//LIMA
   struct list_elem *sleeping_elem = list_begin(&sleeping_threads);
@@ -186,7 +198,7 @@ static void timer_interrupt(struct intr_frame* args UNUSED)
       sleeping_elem = sleeping_elem->next;
     }
   }
-}//LIMA
+}//LIMA // 18/2
 
 /* Returns true if LOOPS iterations waits for more than one timer
 	tick, otherwise false. */

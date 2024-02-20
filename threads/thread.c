@@ -198,14 +198,6 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
   	sf = alloc_frame (t, sizeof *sf);
   	sf->eip = switch_entry;
 	sf->ebp = 0; //NY
-	//LIMA
-  	#ifdef USERPROG
-		for(int i = 0; i < 130; i++){
-			t->files[i] = NULL;
-			t->taken_fds[i] = NULL;
-		}
-  	#endif
-	//LIMA
 
 	/* Add to run queue. */
 	thread_unblock(t);
@@ -287,11 +279,11 @@ void thread_exit(void)
 
 #ifdef USERPROG
 	process_exit();
+	struct thread*t = thread_current();
 	for (int i = 2; i<130; i++){
-		if(thread_current()->taken_fds[i] != NULL){
+		if(t->files[i] != NULL){
 			close(i);
-			thread_current()->taken_fds[i] = NULL;
-
+			t->files[i] = NULL;
 		}
 	}
 #endif
@@ -449,14 +441,18 @@ static void init_thread(struct thread* t, const char* name, int priority)
   	ASSERT (t != NULL);
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
-	t->parent = NULL; //sätt parent till NULL innan den blir nåt annat //LIMA
+	
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name); //rätt namn? //LIMA
 	t->stack = (uint8_t *) t + PGSIZE;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-	list_init (&t->children_list); //list init lab3 //LIMA
+
+	#ifdef USERPROG
+	t->parent = NULL; //sätt parent till NULL innan den blir nåt annat //LIMA
+	list_init (&(t->children_list)); //list init lab3 //LIMA
+	#endif
 
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);
