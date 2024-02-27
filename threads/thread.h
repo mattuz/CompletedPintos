@@ -95,10 +95,10 @@ struct thread
     struct list_elem elem;              /* List element. */
     
     /* List och sleeping treads*/
-    struct list_elem sleeping_elem; //VÅR? NÄ (emil har inte denna...)
+    struct list_elem sleeping_elem; 
 
     /* Time to sleep */
-    int64_t sleep_time; //VÅR? NÄ (emil har inte denna...)
+    int64_t sleep_time;
 
 	
 
@@ -106,35 +106,34 @@ struct thread
     /* Owned by userprog/process.c. */
 	
 /* List of all the children of a thread */
-    struct list children_list;
-	struct parent_child *parent;
-
-	/* Pointer to parent_child struct */
+    struct list pc_children; // Lista med pekare till alla structs som den delar med sina barn 
+	struct parent_child *pc_parent; //pekare till structen son den delar med sin parent
     
     uint32_t *pagedir;           /* Page directory. */
     struct file *files[130]; /* A threads open files can be found
 					   on the index of their FD. */
     //int taken_fds[130]; //kanske skita i denna?
 
-	struct semaphore pc_sema;
+	//struct semaphore pc_sema; //fråga dag: ska denna ligga i thread eller pc?
 
-	struct parent_child
-  {
-   tid_t child_tid;
-   int exit_status;
-   int alive_count;
-   bool load;
-   struct semaphore wait_sema;
-   struct list_elem child;
-   struct lock alive_lock;
-   //bool exited; // kanske inte behöver denna?
-  };
+	
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
+struct parent_child
+  {
+   tid_t child_tid; //tid till det barn som delar denna struct
+   int exit_status; //exit status på det barn som delar denna struct
+   int alive_count; //börjar på 2 (barn + förälder), struct kan free:as om =0 (båda "döda")
+   bool load; //Används för att se om barnet laddades ordentligt
+   struct semaphore wait_sema; 
+   struct list_elem child;
+   struct lock alive_lock; //Om parent/child ändrar i alive_count ska denna up för att den andra inte ska komma åt (förrän färdigt)
+   //bool exited; // kanske inte behöver denna?
+  };
   
 
 /* If false (default), use round-robin scheduler.

@@ -277,16 +277,19 @@ void thread_exit(void)
 {
 	ASSERT(!intr_context());
 
-#ifdef USERPROG
-	process_exit();
-	struct thread*t = thread_current();
-	for (int i = 2; i<130; i++){
-		if(t->files[i] != NULL){
-			close(i);
-			t->files[i] = NULL;
+	printf("%s: exit(%d)\n", thread_current()->name, thread_current()->pc_parent->exit_status);
+	
+	#ifdef USERPROG
+		process_exit();
+		struct thread*t = thread_current();
+		for (int i = 2; i<130; i++){
+			if(t->files[i] != NULL){
+				close(i);
+				t->files[i] = NULL;
+			}
 		}
-	}
-#endif
+	#endif
+  	
 
 	/* Remove thread from all threads list, set our status to dying,
 		and schedule another process.  That process will destroy us
@@ -450,8 +453,8 @@ static void init_thread(struct thread* t, const char* name, int priority)
 	t->magic = THREAD_MAGIC;
 
 	#ifdef USERPROG
-	t->parent = NULL; //sätt parent till NULL innan den blir nåt annat //LIMA
-	list_init (&(t->children_list)); //list init lab3 //LIMA
+	t->pc_parent = NULL; //sätt parent till NULL innan den blir nåt annat //LIMA
+	list_init (&(t->pc_children)); 
 	#endif
 
 	old_level = intr_disable();
@@ -540,7 +543,6 @@ static void schedule(void)
 	struct thread* cur = running_thread();
 	struct thread* next = next_thread_to_run();
 	struct thread* prev = NULL;
-
 	ASSERT(intr_get_level() == INTR_OFF);
 	ASSERT(cur->status != THREAD_RUNNING);
 	ASSERT(is_thread(next));

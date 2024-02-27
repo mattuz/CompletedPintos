@@ -26,8 +26,9 @@ static void dump_stack(const void* esp);
 
 struct aux { //LIMA HÄRIFRÅN
     char *cmd_line;
-	struct thread *t_parent; 
-    //struct parent_child *parent_child;
+	//struct thread *t_parent; 
+    struct parent_child *parent_child;
+	struct semaphore pc_sema;
 };
 
 /* Starts a new thread running a user program loaded from
@@ -38,53 +39,74 @@ struct aux { //LIMA HÄRIFRÅN
 tid_t process_execute(const char *cmd_line)
 
 {//LISMA
-  //Här är vi inne i föräldern
+	//Här är vi inne i föräldern
 
-  struct thread *t_cur = thread_current();
-  sema_init(&(t_cur->pc_sema), 0);
+	struct thread *t_cur = thread_current();
 
-  /* Make a copy of FILE_NAME. //CMD_LINE NUMERA
-     Otherwise there's a race between the caller and load(). */
-  char *cl_copy = palloc_get_page (0);
-  if (cl_copy == NULL) //cl_copy numera!!
-    return TID_ERROR;
-  strlcpy (cl_copy, cmd_line, PGSIZE); //cl_copy
+	/* Make a copy of FILE_NAME. //CMD_LINE NUMERA
+		Otherwise there's a race between the caller and load(). */
+	char *cl_copy = palloc_get_page (0);
+	if (cl_copy == NULL) //cl_copy numera!!
+		return TID_ERROR;
+	strlcpy (cl_copy, cmd_line, PGSIZE); //cl_copy
 
-  char *file_name = palloc_get_page (0);
+	char *file_name = palloc_get_page (0);
 
-/*Läs av file name från cmd_line, avsluta med NULL*/
-  if(file_name == NULL){
-	return TID_ERROR;
-  }
-  int num_chars = 0;
-  char char_cur = cmd_line[0];
-  int max = 100; 
-  while(char_cur != ' '){
-	max--;
-	if (max == 0){
-		break; //saknar null terminator
+	/*Läs av file name från cmd_line, avsluta med NULL*/
+	if(file_name == NULL){
+		return TID_ERROR;
 	}
-	file_name[num_chars] = char_cur;
-	num_chars++;
-	char_cur = cmd_line[num_chars];
-  }
-  file_name[num_chars] = NULL;
-  
-  struct aux *args = (struct aux *)malloc(sizeof(struct aux));
-  args->cmd_line = cl_copy;
-  args->t_parent = t_cur;
+	int num_chars = 0;
+	char char_cur = cmd_line[0];
+	int max = 100; 
+	while(char_cur != ' '){
+		max--;
+		if (max == 0){
+			break; //saknar null terminator
+		}
+		file_name[num_chars] = char_cur;
+		num_chars++;
+		char_cur = cmd_line[num_chars];
+	}
+	file_name[num_chars] = NULL;
 
-  tid_t tid_c = thread_create (file_name, PRI_DEFAULT, start_process, args); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
-  sema_down(&(t_cur->pc_sema));
-  free(args);
-  palloc_free_page(file_name);
+	struct aux *args = (struct aux *)malloc(sizeof(struct aux));
+	sema_init(&(args->pc_sema), 0);
+	args-> parent_child = NULL;
+	args->cmd_line = cl_copy;
+	// args->t_parent = t_cur;
 
-  if (tid_c == TID_ERROR){
-    palloc_free_page (cl_copy);
-	} 
-	
+	tid_t tid_c = thread_create (file_name, PRI_DEFAULT, start_process, args); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
+
+
+	if (tid_c == TID_ERROR){
+		palloc_free_page (cl_copy);
+		//palloc_free_page(file_name);
+		//return 0;
+		} 
+
+	palloc_free_page(file_name);
+
+	sema_down(&(args->pc_sema)); //fråga dag:
+
+	args->parent_child->child_tid = tid_c;
+	list_push_back(&(t_cur->pc_children), &(args->parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
+		//kke
+
+	if (args->parent_child->load) {
+		free(args);
+		return tid_c;
+	}
+	else {
+		free(args);
+
+		return TID_ERROR;
+		}
+		
+
+
 	// Tilldela barnet till pc mapping och se efter att det laddat successfully
-	struct list_elem *elem;
+	/*struct list_elem *elem;
 	for(elem = list_begin (&t_cur->children_list); elem != list_end (&t_cur->children_list); elem = list_next (elem)){
 		struct parent_child *pc_child = list_entry(elem, struct parent_child, child); 
 		if(pc_child->child_tid == NULL){ //pc_child är barnet som just skapats
@@ -96,9 +118,12 @@ tid_t process_execute(const char *cmd_line)
 				return TID_ERROR;
 			}
 		}
-	}
-	return TID_ERROR;
+	}*/
+	
+	free(args);
 
+	return TID_ERROR;
+	
 }//LISMA
 
 /* A thread function that loads a user process and starts it
@@ -109,43 +134,46 @@ static void start_process(void *args) //LISMA
 
 	//Här inne är vi inne i barnet
 	struct thread *t_cur = thread_current(); //Ny process
-	struct thread *t_parent = ((struct aux *)args)-> t_parent;
+	//struct thread *t_parent = ((struct aux *)args)-> t_parent;
 	struct intr_frame if_;
 	char *cmd_line = ((struct aux *)args)->cmd_line;
 	
-
-	// Strukturera parent_child mapping
-	struct parent_child *parent_child = malloc(sizeof(struct parent_child));
-	sema_init(&parent_child->wait_sema, 0);
-	
-	t_cur->parent = parent_child;
-	parent_child->exit_status = 0;
-	parent_child->alive_count = 2;
-	parent_child-> child_tid = NULL; // Sätt i process_execute()
-
-	lock_init(&parent_child->alive_lock);
-	list_init(&(t_cur->children_list));
-	list_push_back(&(t_parent->children_list), &(parent_child->child));
-	
+	//list_init(&(t_cur->pc_children));
+	//list_push_back(&(t_parent->pc_children), &(parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
 
 	/* Initialize interrupt frame and load executable. */
 	memset(&if_, 0, sizeof if_);
 	if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
-	parent_child->load = load(cmd_line, &if_.eip, &if_.esp);
 
 
+	bool loaded = load(cmd_line, &if_.eip, &if_.esp);
+
+	
 
 	/* If load failed, quit. */
 	palloc_free_page (cmd_line); //här står det cmd_line ist för aux-file_name
 
-	if (!parent_child->load) {
-		sema_up(&(((struct thread *)t_parent)->pc_sema)); 
-
+	if (!loaded) {
+		sema_up(&(((struct aux *)args)->pc_sema)); //fråga dag: Hur annars ska man kunna stoppa förälder? 
 		thread_exit ();
 	} //LISMA
-	sema_up(&(((struct thread *)t_parent)->pc_sema)); 
+    // Strukturera parent_child mapping
+	struct parent_child *parent_child = malloc(sizeof(struct parent_child)); //structen vi dela rmed föräldern
+	sema_init(&parent_child->wait_sema, 0);
+	
+	t_cur->pc_parent = parent_child;
+	parent_child->exit_status = -1;
+	parent_child->alive_count = 2; //behöver nog inte sema för föräldern har inte tillgång till struct än
+	parent_child-> child_tid = NULL; // Sätt i process_execute()
+	parent_child->load = loaded;
+
+	lock_init(&parent_child->alive_lock);
+
+
+	((struct aux *)args)->parent_child = parent_child;
+	sema_up(&(((struct aux *)args)->pc_sema)); 
 
 	/* Start the user process by simulating a return from an
 		interrupt, implemented by intr_exit (in
@@ -173,20 +201,18 @@ process_wait (tid_t child_tid UNUSED) //LISMA
   struct thread *t_cur = thread_current ();  
   struct list_elem *elem;
   int exit_status;
-  struct parent_child *pc_child = NULL;
+  struct parent_child *pc_child = NULL; //structen vi delar med child
 
-  for(elem = list_begin (&t_cur->children_list); elem != list_end (&t_cur->children_list);
+  for(elem = list_begin (&t_cur->pc_children); elem != list_end (&t_cur->pc_children);
            elem = list_next (elem)) {
-		
-
 
 	struct parent_child *child_it = list_entry (elem, struct parent_child, child);
     if (child_it->child_tid == child_tid){
-		pc_child = child_it; //Child hittad
+		pc_child = child_it; //Child(=struct den delar med child) hittad (sparas i variabel ovan)
 		break;
 	}
   }
-  if (pc_child != NULL){
+  if (pc_child != NULL){ //om structen inte tagits bort än, gör vi det
 	sema_down(&pc_child->wait_sema);
 	exit_status = pc_child->exit_status;
 	list_remove(elem);
@@ -204,32 +230,38 @@ void process_exit(void) //LISMA
   struct thread *t_cur = thread_current ();
   uint32_t *pd;
 
-  if (t_cur->parent != NULL) { 
-    lock_acquire(&t_cur->parent->alive_lock); //Kolla om parent är null. sätt parent null i init_thread
-    (t_cur->parent->alive_count)--;
-	if (t_cur->parent->alive_count == 0){ //Parent har väntat färdigt på child (t_cur)
-		free(t_cur->parent);
-		t_cur->parent = NULL;
+  if (t_cur->pc_parent != NULL) { 
+    lock_acquire(&t_cur->pc_parent->alive_lock); //Kolla om parent är null. sätt parent null i init_thread
+    (t_cur->pc_parent->alive_count)--;
+	if (t_cur->pc_parent->alive_count == 0){ //Parent har väntat färdigt på child (t_cur)
+		free(t_cur->pc_parent);
+		//t_cur->parent = NULL;
 	}
-	else { //Child (t_cur) exit före paremt och måste vänta
-		sema_up(&t_cur->parent->wait_sema);
-		lock_release(&t_cur->parent->alive_lock);
+	else { //Child (t_cur) exit före parent och måste vänta
+		sema_up(&t_cur->pc_parent->wait_sema);
+		lock_release(&t_cur->pc_parent->alive_lock);
 	}
   }
 
 //har några barn exitat
-  while(!list_empty(&(t_cur->children_list))){
-	struct list_elem *elem = list_pop_front(&(t_cur->children_list));
-	struct parent_child *pc_child = list_entry(elem, struct parent_child, child);
-	lock_acquire(&pc_child->alive_lock);
-	(pc_child->alive_count)--;
-	if(pc_child->alive_count == 0){ //Child har väntat färdigt på parent(t_cur)
-		free(pc_child);
-		pc_child = NULL;
+  while(!list_empty(&(t_cur->pc_children))){
+	struct list_elem *elem = list_pop_front(&(t_cur->pc_children));
+	struct parent_child *pc_child = list_entry(elem, struct parent_child, child); //lägger barn struct i variabel
+	
+	if(pc_child != NULL){
+		lock_acquire(&pc_child->alive_lock);
+		(pc_child->alive_count)--;
+		if(pc_child->alive_count == 0){ //Child har väntat färdigt på parent(t_cur) (barnet finns inte längre)
+			free(pc_child);
+			pc_child = NULL;
+		}
+		else { //Parent (t_curr) exit före child och måste vänta
+			//sema_up(&pc_child->wait_sema); //fråga dag: är detta rätt? Är det så här vi "väntar"?
+			lock_release(&pc_child->alive_lock);
+		}
 	}
-	else { //Parent (t_curr) exit före child och måste vänta
-		lock_release(&pc_child->alive_lock);
-	}
+
+	
   }
   /* Destroy the current process's page directory and switch back
 		to the kernel-only page directory. */
@@ -545,6 +577,7 @@ load (const char *cmd_line, void (**eip) (void), void **esp) //cmd_line har bytt
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close(file);
+	
 	return success;
 }
 

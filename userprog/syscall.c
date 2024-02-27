@@ -22,7 +22,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   //printf ("system call!\n");
   
-  valid_addr(f->esp);
+  valid_buff(f->esp, 4);
   
   int syscall_num = *(int*)(f->esp);
   //void *buffer;
@@ -37,7 +37,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     break;
 
   case SYS_EXIT: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4;
     int status = *(int*)arg1;
     exit(status);
@@ -47,7 +47,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   case SYS_EXEC: {
 
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4;
    
     
@@ -60,7 +60,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_WAIT: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4;
   
     tid_t child_tid = *(tid_t *)arg1;
@@ -70,8 +70,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_CREATE: {
-    valid_addr(f->esp+4);
-    valid_addr(f->esp+8);
+    valid_buff(f->esp+4, 4);
+    valid_buff(f->esp+8, 4);
     void *arg1 = f->esp+4;
     void *arg2 = f->esp+8;
    
@@ -86,7 +86,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_REMOVE: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4;  
  
     const char *file_name = *(const char**)arg1;
@@ -97,7 +97,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_OPEN: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4; 
   
     const char *file = *(const char**)arg1;
@@ -108,7 +108,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_FILESIZE: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4;
  
     int fd = *(int*)arg1;
@@ -119,9 +119,9 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_READ: {
-    valid_addr(f->esp+4);
-    valid_addr(f->esp+8);
-    valid_addr(f->esp+12);
+    valid_buff(f->esp+4, 4);
+    valid_buff(f->esp+8, 4);
+    valid_buff(f->esp+12, 4);
     void *arg1 = f->esp+4;
     void *arg2 = f->esp+8;
     void *arg3 = f->esp+12;  
@@ -138,9 +138,9 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_WRITE: {
-    valid_addr(f->esp+4);
-    valid_addr(f->esp+8);
-    valid_addr(f->esp+12);
+    valid_buff(f->esp+4, 4);
+    valid_buff(f->esp+8, 4);
+    valid_buff(f->esp+12, 4);
     void *arg1 = f->esp+4;
     void *arg2 = f->esp+8;
     void *arg3 = f->esp+12;  
@@ -156,8 +156,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_SEEK: {
-    valid_addr(f->esp+4);
-    valid_addr(f->esp+8);
+    valid_buff(f->esp+4, 4);
+    valid_buff(f->esp+8, 4);
 
     void *arg1 = f->esp+4;
     void *arg2 = f->esp+8;
@@ -172,7 +172,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_TELL: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4,4);
     void *arg1 = f->esp+4; 
   
     int fd = *(int*)arg1;
@@ -184,7 +184,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     
 
   case SYS_CLOSE: {
-    valid_addr(f->esp+4);
+    valid_buff(f->esp+4, 4);
     void *arg1 = f->esp+4; 
   
     int fd= *(int*)arg1;
@@ -206,10 +206,9 @@ void halt(void){
 
 
 void exit (int status){  
-  printf("%s: exit(%d)\n", thread_current()->name, status);
-  if(thread_current()->parent != NULL){
-    thread_current()->parent->exit_status = status; //skulle detta skyddas av semaphor?
-  thread_exit();
+  if(thread_current()->pc_parent != NULL){
+    thread_current()->pc_parent->exit_status = status; //skulle detta skyddas av semaphor?
+    thread_exit();
   } 
 }
 
