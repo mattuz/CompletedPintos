@@ -51,7 +51,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     void *arg1 = f->esp+4;
    
     
-  
+    //printf("syscall exec\n");
+
     char *cmd_line = *(const char **)arg1;
     valid_str(cmd_line);
     f->eax = exec(cmd_line);
@@ -208,8 +209,8 @@ void halt(void){
 void exit (int status){  
   if(thread_current()->pc_parent != NULL){
     thread_current()->pc_parent->exit_status = status; //skulle detta skyddas av semaphor?
-    thread_exit();
   } 
+  thread_exit();
 }
 
 

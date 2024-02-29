@@ -69,7 +69,6 @@ tid_t process_execute(const char *cmd_line)
 		char_cur = cmd_line[num_chars];
 	}
 	file_name[num_chars] = NULL;
-
 	struct aux *args = (struct aux *)malloc(sizeof(struct aux));
 	sema_init(&(args->pc_sema), 0);
 	args-> parent_child = NULL;
@@ -81,16 +80,21 @@ tid_t process_execute(const char *cmd_line)
 
 	if (tid_c == TID_ERROR){
 		palloc_free_page (cl_copy);
+		free(args);
+		return TID_ERROR;
+
 		//palloc_free_page(file_name);
 		//return 0;
 		} 
 
 	palloc_free_page(file_name);
 
-	sema_down(&(args->pc_sema)); //fråga dag:
+	sema_down(&(args->pc_sema)); //fråga dag: ska den ligga här? Är det för att vi väntar på att create ska vara klar? 
 
 	args->parent_child->child_tid = tid_c;
-	list_push_back(&(t_cur->pc_children), &(args->parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
+	if (&t_cur->pc_children != NULL){	
+		list_push_back(&(t_cur->pc_children), &(args->parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
+}
 		//kke
 
 	if (args->parent_child->load) {
@@ -156,6 +160,7 @@ static void start_process(void *args) //LISMA
 	palloc_free_page (cmd_line); //här står det cmd_line ist för aux-file_name
 
 	if (!loaded) {
+		//printf("sp säger inte loadat \n");
 		sema_up(&(((struct aux *)args)->pc_sema)); //fråga dag: Hur annars ska man kunna stoppa förälder? 
 		thread_exit ();
 	} //LISMA
@@ -234,37 +239,44 @@ void process_exit(void) //LISMA
     lock_acquire(&t_cur->pc_parent->alive_lock); //Kolla om parent är null. sätt parent null i init_thread
     (t_cur->pc_parent->alive_count)--;
 	if (t_cur->pc_parent->alive_count == 0){ //Parent har väntat färdigt på child (t_cur)
+		//sema_up(&t_cur->pc_parent->wait_sema); finns ingen kvar att sema uppa till
 		free(t_cur->pc_parent);
 		//t_cur->parent = NULL;
 	}
 	else { //Child (t_cur) exit före parent och måste vänta
-		sema_up(&t_cur->pc_parent->wait_sema);
 		lock_release(&t_cur->pc_parent->alive_lock);
+
+		sema_up(&t_cur->pc_parent->wait_sema);
+//		lock_release(&t_cur->pc_parent->alive_lock);
+	
 	}
   }
 
 //har några barn exitat
-  while(!list_empty(&(t_cur->pc_children))){
+while(!list_empty(&(t_cur->pc_children))){
 	struct list_elem *elem = list_pop_front(&(t_cur->pc_children));
 	struct parent_child *pc_child = list_entry(elem, struct parent_child, child); //lägger barn struct i variabel
-	
 	if(pc_child != NULL){
 		lock_acquire(&pc_child->alive_lock);
 		(pc_child->alive_count)--;
 		if(pc_child->alive_count == 0){ //Child har väntat färdigt på parent(t_cur) (barnet finns inte längre)
+
 			free(pc_child);
 			pc_child = NULL;
+			
 		}
 		else { //Parent (t_curr) exit före child och måste vänta
-			//sema_up(&pc_child->wait_sema); //fråga dag: är detta rätt? Är det så här vi "väntar"?
 			lock_release(&pc_child->alive_lock);
+
+			//sema_up(&pc_child->wait_sema); //fråga dag: är detta rätt? Är det så här vi "väntar"?
+
 		}
 	}
 
 	
-  }
+}
   /* Destroy the current process's page directory and switch back
-		to the kernel-only page directory. */
+		to the kernel-only pasema_upge directory. */
 	pd = t_cur->pagedir;
 	if (pd != NULL) {
 		/* Correct ordering here is crucial.  We must set
@@ -577,7 +589,8 @@ load (const char *cmd_line, void (**eip) (void), void **esp) //cmd_line har bytt
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close(file);
-	
+	//printf("load klar\n");
+
 	return success;
 }
 

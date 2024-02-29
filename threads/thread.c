@@ -274,22 +274,32 @@ tid_t thread_tid(void)
 /* Deschedules the current thread and destroys it.  Never
 	returns to the caller. */
 void thread_exit(void)
+
 {
+	//printf("är i thread_exit\n");
 	ASSERT(!intr_context());
 
-	printf("%s: exit(%d)\n", thread_current()->name, thread_current()->pc_parent->exit_status);
-	
+	//Ska inte printa detta om barnet inte har laddats (det är barnet som kallar på denne function)
+
+	if (thread_current()->pc_parent != NULL){//la till denna NULL check nu 29/2
+		printf("%s: exit(%d)\n", thread_current()->name, thread_current()->pc_parent->exit_status);
+
+	}
 	#ifdef USERPROG
 		process_exit();
-		struct thread*t = thread_current();
-		for (int i = 2; i<130; i++){
-			if(t->files[i] != NULL){
-				close(i);
-				t->files[i] = NULL;
-			}
-		}
+		//printf("har kört process_exit\n");
+
+		struct thread* t = thread_current();
+		if (t->files != NULL){//la till denna NULL check nu 29/2 (onödig?)
+			for (int i = 2; i<130; i++){
+				if(t->files[i] != NULL){
+					file_close(t->files[i]);
+					t->files[i] = NULL;
+				}
+		}}
+		
 	#endif
-  	
+  		//printf("är i thread_exit\n");
 
 	/* Remove thread from all threads list, set our status to dying,
 		and schedule another process.  That process will destroy us
@@ -297,8 +307,11 @@ void thread_exit(void)
 	intr_disable();
 	list_remove(&thread_current()->allelem); //NY
 	thread_current()->status = THREAD_DYING;
+	//printf("fail\n");	blir knas kalas av denna print
+
 	schedule();
 	NOT_REACHED();
+
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
