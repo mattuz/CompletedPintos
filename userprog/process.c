@@ -91,21 +91,27 @@ tid_t process_execute(const char *cmd_line)
 
 	sema_down(&(args->pc_sema)); //fråga dag: ska den ligga här? Är det för att vi väntar på att create ska vara klar? 
 
-	args->parent_child->child_tid = tid_c;
-	if (&t_cur->pc_children != NULL){	
-		list_push_back(&(t_cur->pc_children), &(args->parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
-}
+	if (args->parent_child != NULL)
+	{
+		args->parent_child->child_tid = tid_c;
+
+		if (&t_cur->pc_children != NULL){	
+			list_push_back(&(t_cur->pc_children), &(args->parent_child->child)); //osäker på vad som händer här? är det rätt? Vad är child?
+		}
 		//kke
 
-	if (args->parent_child->load) {
-		free(args);
-		return tid_c;
-	}
-	else {
-		free(args);
-
-		return TID_ERROR;
+		if (args->parent_child->load) {
+			free(args);
+			return tid_c;
 		}
+		else {
+			free(args);
+
+			return TID_ERROR;
+		}
+	}
+
+	
 		
 
 
