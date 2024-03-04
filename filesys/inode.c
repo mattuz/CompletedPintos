@@ -3,6 +3,7 @@
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 #include <debug.h>
 #include <list.h>
@@ -11,6 +12,8 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
+
+struct semaphore inode_sema;
 
 /* On-disk inode.
 	Must be exactly BLOCK_SECTOR_SIZE bytes long. */
@@ -35,6 +38,10 @@ struct inode {
 	int open_cnt;				/* Number of openers. */
 	bool removed;				/* True if deleted, false otherwise. */
 	struct inode_disk data; /* Inode content. */
+
+	struct semaphore mutex;
+	struct semaphore wrt;
+	int read_count;
 };
 
 /* Returns the block device sector that contains byte offset POS
@@ -58,6 +65,7 @@ static struct list open_inodes;
 void inode_init(void)
 {
 	list_init(&open_inodes);
+	sema_init(&inode_sema, 1);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -102,6 +110,7 @@ bool inode_create(block_sector_t sector, off_t length)
 	Returns a null pointer if memory allocation fails. */
 struct inode* inode_open(block_sector_t sector)
 {
+	//sema_down(&inode_sema);
 	struct list_elem* e;
 	struct inode* inode;
 
@@ -110,6 +119,7 @@ struct inode* inode_open(block_sector_t sector)
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
+			//sema_up(&inode_sema);
 			return inode;
 		}
 	}
@@ -117,6 +127,7 @@ struct inode* inode_open(block_sector_t sector)
 	/* Allocate memory. */
 	inode = malloc(sizeof *inode);
 	if (inode == NULL)
+		//sema_up(&inode_sema);
 		return NULL;
 
 	/* Initialize. */
@@ -124,7 +135,13 @@ struct inode* inode_open(block_sector_t sector)
 	inode->sector = sector;
 	inode->open_cnt = 1;
 	inode->removed = false;
+
+	sema_init(&inode->mutex, 1);
+	sema_init(&inode->wrt, 1);
+	inode->read_count = 0;
+
 	block_read(fs_device, inode->sector, &inode->data);
+	//sema_up(&inode_sema);
 	return inode;
 }
 
@@ -146,10 +163,12 @@ block_sector_t inode_get_inumber(const struct inode* inode)
 	If this was the last reference to INODE, frees its memory.
 	If INODE was also a removed inode, frees its blocks. */
 void inode_close(struct inode* inode)
-{
+{	
 	/* Ignore null pointer. */
 	if (inode == NULL)
 		return;
+
+	//sema_down(&inode_sema);
 
 	/* Release resources if this was the last opener. */
 	if (--inode->open_cnt == 0) {
@@ -164,6 +183,7 @@ void inode_close(struct inode* inode)
 
 		free(inode);
 	}
+	//sema_up(&inode_sema);
 }
 
 /* Marks INODE to be deleted when it is closed by the last caller who
@@ -182,6 +202,14 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 	uint8_t* buffer = buffer_;
 	off_t bytes_read = 0;
 	uint8_t* bounce = NULL;
+
+	sema_down(&inode->mutex);
+	inode->read_count++;
+
+	if (inode->read_count == 1) {
+		sema_down(&inode->wrt);
+	}
+	sema_up(&inode->mutex);
 
 	while (size > 0) {
 		/* Disk sector to read, starting byte offset within sector. */
@@ -221,6 +249,14 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 	}
 	free(bounce);
 
+	sema_down(&inode->mutex);
+	inode->read_count--;
+
+	if(inode->read_count == 0){
+		sema_up(&inode->wrt);
+	}
+	sema_up(&inode->mutex);
+
 	return bytes_read;
 }
 
@@ -234,6 +270,12 @@ off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t
 	const uint8_t* buffer = buffer_;
 	off_t bytes_written = 0;
 	uint8_t* bounce = NULL;
+
+	if(false){ //check if more writers writing
+		return 0; //if so, we didn't write anything.
+	} //Lisa kommenterar: vi kanske måste returna -1 sen i write :)
+
+	sema_down(&inode->wrt);
 
 	while (size > 0) {
 		/* Sector to write, starting byte offset within sector. */
@@ -279,6 +321,8 @@ off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t
 		bytes_written += chunk_size;
 	}
 	free(bounce);
+	
+	sema_up(&inode->wrt);
 
 	return bytes_written;
 }

@@ -2,6 +2,7 @@
 
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 #include <debug.h>
 
@@ -9,6 +10,8 @@
 struct file {
 	struct inode* inode; /* File's inode. */
 	off_t pos;				/* Current position. */
+	struct lock write_lock;
+	//struct lock pos_lock;
 };
 
 /* Opens a file for the given INODE, of which it takes ownership,
@@ -20,6 +23,8 @@ struct file* file_open(struct inode* inode)
 	if (inode != NULL && file != NULL) {
 		file->inode = inode;
 		file->pos = 0;
+		lock_init(&file->write_lock);
+		//lock_init(&file->pos_lock);
 		return file;
 	}
 	else {
@@ -81,10 +86,16 @@ off_t file_read_at(struct file* file, void* buffer, off_t size, off_t file_ofs)
 	not yet implemented.)
 	Advances FILE's position by the number of bytes read. */
 off_t file_write(struct file* file, const void* buffer, off_t size)
-{
+{	
+
+	lock_acquire(&file->write_lock); //Busy wait nu (?), ej optimalt(?), eller?(?)
 	off_t bytes_written = inode_write_at(file->inode, buffer, size, file->pos);
+	lock_release(&file->write_lock);
+	
 	file->pos += bytes_written;
+	
 	return bytes_written;
+	
 }
 
 /* Writes SIZE bytes from BUFFER into FILE,
@@ -112,7 +123,9 @@ void file_seek(struct file* file, off_t new_pos)
 {
 	ASSERT(file != NULL);
 	ASSERT(new_pos >= 0);
+	//lock_acquire(&file->pos_lock);
 	file->pos = new_pos;
+	//lock_release(&file->pos_lock);
 }
 
 /* Returns the current position in FILE as a byte offset from the

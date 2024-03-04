@@ -4,6 +4,7 @@
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "threads/synch.h"
 
 #include <debug.h>
 #include <stdio.h>
@@ -11,6 +12,8 @@
 
 /* Partition that contains the file system. */
 struct block* fs_device;
+
+struct semaphore remove_create;
 
 static void do_format(void);
 
@@ -28,6 +31,7 @@ void filesys_init(bool format)
 	if (format)
 		do_format();
 
+	sema_init(&remove_create, 1);
 	free_map_open();
 }
 
@@ -44,6 +48,7 @@ void filesys_done(void)
 	or if internal memory allocation fails. */
 bool filesys_create(const char* name, off_t initial_size)
 {
+	sema_down(&remove_create);
 	block_sector_t inode_sector = 0;
 	struct dir* dir = dir_open_root();
 	bool success
@@ -53,6 +58,8 @@ bool filesys_create(const char* name, off_t initial_size)
 	if (!success && inode_sector != 0)
 		free_map_release(inode_sector, 1);
 	dir_close(dir);
+	
+	sema_up(&remove_create);
 
 	return success;
 }
@@ -64,12 +71,15 @@ bool filesys_create(const char* name, off_t initial_size)
 	or if an internal memory allocation fails. */
 struct file* filesys_open(const char* name)
 {
+	sema_down(&remove_create);
 	struct dir* dir = dir_open_root();
 	struct inode* inode = NULL;
 
 	if (dir != NULL)
 		dir_lookup(dir, name, &inode);
 	dir_close(dir);
+
+	sema_up(&remove_create);
 
 	return file_open(inode);
 }
