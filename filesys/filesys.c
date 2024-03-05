@@ -90,9 +90,11 @@ struct file* filesys_open(const char* name)
 	or if an internal memory allocation fails. */
 bool filesys_remove(const char* name)
 {
+	sema_down(&remove_create);
 	struct dir* dir = dir_open_root();
 	bool success = dir != NULL && dir_remove(dir, name);
 	dir_close(dir);
+	sema_up(&remove_create);
 
 	return success;
 }

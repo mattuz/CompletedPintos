@@ -14,6 +14,7 @@
 #define INODE_MAGIC 0x494e4f44
 
 struct semaphore inode_sema;
+struct lock open_close_lock;
 
 /* On-disk inode.
 	Must be exactly BLOCK_SECTOR_SIZE bytes long. */
@@ -66,6 +67,7 @@ void inode_init(void)
 {
 	list_init(&open_inodes);
 	sema_init(&inode_sema, 1);
+	lock_init(&open_close_lock);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -111,6 +113,7 @@ bool inode_create(block_sector_t sector, off_t length)
 struct inode* inode_open(block_sector_t sector)
 {
 	//sema_down(&inode_sema);
+	//lock_acquire(&open_close_lock);
 	struct list_elem* e;
 	struct inode* inode;
 
@@ -119,6 +122,7 @@ struct inode* inode_open(block_sector_t sector)
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
+			//lock_release(&open_close_lock);
 			//sema_up(&inode_sema);
 			return inode;
 		}
@@ -127,6 +131,7 @@ struct inode* inode_open(block_sector_t sector)
 	/* Allocate memory. */
 	inode = malloc(sizeof *inode);
 	if (inode == NULL)
+		//lock_release(&open_close_lock);
 		//sema_up(&inode_sema);
 		return NULL;
 
@@ -139,17 +144,24 @@ struct inode* inode_open(block_sector_t sector)
 	sema_init(&inode->mutex, 1);
 	sema_init(&inode->wrt, 1);
 	inode->read_count = 0;
-
+	
 	block_read(fs_device, inode->sector, &inode->data);
+	
 	//sema_up(&inode_sema);
+	//lock_release(&open_close_lock);
+
 	return inode;
 }
 
 /* Reopens and returns INODE. */
 struct inode* inode_reopen(struct inode* inode)
 {
-	if (inode != NULL)
-		inode->open_cnt++;
+	if (inode != NULL) {
+		if (inode->open_cnt != 0){
+			inode->open_cnt++;
+		}
+	}
+		
 	return inode;
 }
 
@@ -169,6 +181,7 @@ void inode_close(struct inode* inode)
 		return;
 
 	//sema_down(&inode_sema);
+	lock_acquire(&open_close_lock);
 
 	/* Release resources if this was the last opener. */
 	if (--inode->open_cnt == 0) {
@@ -183,6 +196,7 @@ void inode_close(struct inode* inode)
 
 		free(inode);
 	}
+	lock_release(&open_close_lock);
 	//sema_up(&inode_sema);
 }
 
@@ -250,6 +264,7 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 	free(bounce);
 
 	sema_down(&inode->mutex);
+
 	inode->read_count--;
 
 	if(inode->read_count == 0){
@@ -274,6 +289,8 @@ off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t
 	if(false){ //check if more writers writing
 		return 0; //if so, we didn't write anything.
 	} //Lisa kommenterar: vi kanske måste returna -1 sen i write :)
+	//testa lägga in check ifall writers "väntar", då får de returna 0
+	//så de ska ev. inte vänta, utan bara sluta 
 
 	sema_down(&inode->wrt);
 
