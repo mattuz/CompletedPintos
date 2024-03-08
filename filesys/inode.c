@@ -42,7 +42,9 @@ struct inode {
 
 	struct semaphore mutex;
 	struct semaphore wrt;
+	struct semaphore queue;
 	int read_count;
+	int deny_count; /*0=ok, >0 inte ok*/
 };
 
 /* Returns the block device sector that contains byte offset POS
@@ -112,7 +114,7 @@ bool inode_create(block_sector_t sector, off_t length)
 	Returns a null pointer if memory allocation fails. */
 struct inode* inode_open(block_sector_t sector)
 {
-	//sema_down(&inode_sema);
+	sema_down(&inode_sema);
 	//lock_acquire(&open_close_lock);
 	struct list_elem* e;
 	struct inode* inode;
@@ -122,7 +124,7 @@ struct inode* inode_open(block_sector_t sector)
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
-			//lock_release(&open_close_lock);
+			lock_release(&open_close_lock);
 			//sema_up(&inode_sema);
 			return inode;
 		}
@@ -131,7 +133,7 @@ struct inode* inode_open(block_sector_t sector)
 	/* Allocate memory. */
 	inode = malloc(sizeof *inode);
 	if (inode == NULL)
-		//lock_release(&open_close_lock);
+		lock_release(&open_close_lock);
 		//sema_up(&inode_sema);
 		return NULL;
 
@@ -143,11 +145,14 @@ struct inode* inode_open(block_sector_t sector)
 
 	sema_init(&inode->mutex, 1);
 	sema_init(&inode->wrt, 1);
+	sema_init(&inode->queue, 1);
+
 	inode->read_count = 0;
+	inode->deny_count = 0;
 	
 	block_read(fs_device, inode->sector, &inode->data);
 	
-	//sema_up(&inode_sema);
+	sema_up(&inode_sema);
 	//lock_release(&open_close_lock);
 
 	return inode;
@@ -180,8 +185,8 @@ void inode_close(struct inode* inode)
 	if (inode == NULL)
 		return;
 
-	//sema_down(&inode_sema);
-	lock_acquire(&open_close_lock);
+	sema_down(&inode_sema);
+	//lock_acquire(&open_close_lock);
 
 	/* Release resources if this was the last opener. */
 	if (--inode->open_cnt == 0) {
@@ -196,8 +201,8 @@ void inode_close(struct inode* inode)
 
 		free(inode);
 	}
-	lock_release(&open_close_lock);
-	//sema_up(&inode_sema);
+	//lock_release(&open_close_lock);
+	sema_up(&inode_sema);
 }
 
 /* Marks INODE to be deleted when it is closed by the last caller who
@@ -213,17 +218,20 @@ void inode_remove(struct inode* inode)
 	than SIZE if an error occurs or end of file is reached. */
 off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset)
 {
-	uint8_t* buffer = buffer_;
-	off_t bytes_read = 0;
-	uint8_t* bounce = NULL;
 
+	sema_down(&inode->queue); //ingen skillnad
 	sema_down(&inode->mutex);
 	inode->read_count++;
 
 	if (inode->read_count == 1) {
 		sema_down(&inode->wrt);
 	}
+	sema_up(&inode->queue);
 	sema_up(&inode->mutex);
+
+	uint8_t* buffer = buffer_;
+	off_t bytes_read = 0;
+	uint8_t* bounce = NULL;
 
 	while (size > 0) {
 		/* Disk sector to read, starting byte offset within sector. */
@@ -282,18 +290,22 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 	growth is not yet implemented.) */
 off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t offset)
 {
+	sema_down(&inode->queue);
+
+	sema_down(&inode->wrt);
+
+	sema_up(&inode->queue);
 	const uint8_t* buffer = buffer_;
 	off_t bytes_written = 0;
 	uint8_t* bounce = NULL;
 
-	if(false){ //check if more writers writing
+	if(inode->deny_count){ //check if more writers writing
 		return 0; //if so, we didn't write anything.
 	} //Lisa kommenterar: vi kanske måste returna -1 sen i write :)
 	//testa lägga in check ifall writers "väntar", då får de returna 0
 	//så de ska ev. inte vänta, utan bara sluta 
 
-	sema_down(&inode->wrt);
-
+	
 	while (size > 0) {
 		/* Sector to write, starting byte offset within sector. */
 		block_sector_t sector_idx = byte_to_sector(inode, offset);
@@ -348,4 +360,15 @@ off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t
 off_t inode_length(const struct inode* inode)
 {
 	return inode->data.length;
+}
+
+void allow_write(struct inode *inode){
+	ASSERT(inode->deny_count > 0);
+	ASSERT(inode->deny_count <= inode->open_cnt);
+	inode->deny_count--;
+}
+
+void deny_write(struct inode *inode){
+	inode->deny_count++;
+	ASSERT(inode->deny_count<=inode->open_cnt);
 }

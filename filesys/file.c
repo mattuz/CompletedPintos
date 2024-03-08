@@ -11,6 +11,7 @@ struct file {
 	struct inode* inode; /* File's inode. */
 	off_t pos;				/* Current position. */
 	struct lock write_lock;
+	bool deny_write;
 	//struct lock pos_lock;
 };
 
@@ -23,6 +24,7 @@ struct file* file_open(struct inode* inode)
 	if (inode != NULL && file != NULL) {
 		file->inode = inode;
 		file->pos = 0;
+		file->deny_write = false;
 		lock_init(&file->write_lock);
 		//lock_init(&file->pos_lock);
 		return file;
@@ -45,6 +47,7 @@ struct file* file_reopen(struct file* file)
 void file_close(struct file* file)
 {
 	if (file != NULL) {
+		file_allow_write(file);
 		inode_close(file->inode);
 		free(file);
 	}
@@ -88,9 +91,9 @@ off_t file_read_at(struct file* file, void* buffer, off_t size, off_t file_ofs)
 off_t file_write(struct file* file, const void* buffer, off_t size)
 {	
 
-	lock_acquire(&file->write_lock); //Busy wait nu (?), ej optimalt(?), eller?(?)
+	//lock_acquire(&file->write_lock); //Busy wait nu (?), ej optimalt(?), eller?(?)
 	off_t bytes_written = inode_write_at(file->inode, buffer, size, file->pos);
-	lock_release(&file->write_lock);
+	//lock_release(&file->write_lock);
 	
 	file->pos += bytes_written;
 	
@@ -134,4 +137,20 @@ off_t file_tell(struct file* file)
 {
 	ASSERT(file != NULL);
 	return file->pos;
+}
+
+void file_allow_write(struct file *file){
+	ASSERT(file != NULL);
+	if(file->deny_write){
+		file->deny_write = false; 
+		allow_write(file->inode);
+	}
+}
+
+void file_deny_write(struct file *file){
+	ASSERT(file != NULL);
+	if(!file->deny_write){
+		file->deny_write = true; 
+		deny_write(file->inode);
+	}
 }
