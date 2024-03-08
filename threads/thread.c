@@ -283,7 +283,6 @@ void thread_exit(void)
 
 	if (thread_current()->pc_parent != NULL){//la till denna NULL check nu 29/2
 		printf("%s: exit(%d)\n", thread_current()->name, thread_current()->pc_parent->exit_status);
-
 	}
 	#ifdef USERPROG
 		process_exit();
@@ -299,7 +298,7 @@ void thread_exit(void)
 		}}
 		
 	#endif
-  		//printf("är i thread_exit\n");
+  		
 
 	/* Remove thread from all threads list, set our status to dying,
 		and schedule another process.  That process will destroy us
@@ -307,8 +306,6 @@ void thread_exit(void)
 	intr_disable();
 	list_remove(&thread_current()->allelem); //NY
 	thread_current()->status = THREAD_DYING;
-	//printf("fail\n");	blir knas kalas av denna print
-
 	schedule();
 	NOT_REACHED();
 

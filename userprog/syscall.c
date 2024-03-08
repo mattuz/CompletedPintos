@@ -208,7 +208,7 @@ void halt(void){
 
 void exit (int status){  
   if(thread_current()->pc_parent != NULL){
-    thread_current()->pc_parent->exit_status = status; //skulle detta skyddas av semaphor?
+    thread_current()->pc_parent->exit_status = status; 
   } 
   thread_exit();
 }
