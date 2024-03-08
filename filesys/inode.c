@@ -114,8 +114,8 @@ bool inode_create(block_sector_t sector, off_t length)
 	Returns a null pointer if memory allocation fails. */
 struct inode* inode_open(block_sector_t sector)
 {
-	sema_down(&inode_sema);
-	//lock_acquire(&open_close_lock);
+	//sema_down(&inode_sema);
+	lock_acquire(&open_close_lock);
 	struct list_elem* e;
 	struct inode* inode;
 
@@ -152,8 +152,8 @@ struct inode* inode_open(block_sector_t sector)
 	
 	block_read(fs_device, inode->sector, &inode->data);
 	
-	sema_up(&inode_sema);
-	//lock_release(&open_close_lock);
+	//sema_up(&inode_sema);
+	lock_release(&open_close_lock);
 
 	return inode;
 }

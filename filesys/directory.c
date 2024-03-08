@@ -3,6 +3,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 #include <list.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 struct dir {
 	struct inode* inode; /* Backing store. */
 	off_t pos;				/* Current position. */
+	struct semaphore dir_sem;
 };
 
 /* A single directory entry. */
@@ -36,6 +38,7 @@ struct dir* dir_open(struct inode* inode)
 	if (inode != NULL && dir != NULL) {
 		dir->inode = inode;
 		dir->pos = 0;
+		sema_init(&dir->dir_sem, 1);
 		return dir;
 	}
 	else {
@@ -138,6 +141,7 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector)
 	if (*name == '\0' || strlen(name) > NAME_MAX)
 		return false;
 
+	sema_down(&dir->dir_sem);
 	/* Check that NAME is not in use. */
 	if (lookup(dir, name, NULL, NULL))
 		goto done;
@@ -161,6 +165,7 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector)
 	success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
 done:
+	sema_up(&dir->dir_sem);
 	return success;
 }
 
@@ -177,6 +182,7 @@ bool dir_remove(struct dir* dir, const char* name)
 	ASSERT(dir != NULL);
 	ASSERT(name != NULL);
 
+	sema_down(&dir->dir_sem);
 	/* Find directory entry. */
 	if (!lookup(dir, name, &e, &ofs))
 		goto done;
@@ -197,6 +203,7 @@ bool dir_remove(struct dir* dir, const char* name)
 
 done:
 	inode_close(inode);
+	sema_up(&dir->dir_sem);
 	return success;
 }
 

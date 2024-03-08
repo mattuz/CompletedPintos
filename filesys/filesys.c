@@ -48,7 +48,7 @@ void filesys_done(void)
 	or if internal memory allocation fails. */
 bool filesys_create(const char* name, off_t initial_size)
 {
-	sema_down(&remove_create);
+	//sema_down(&remove_create);
 	block_sector_t inode_sector = 0;
 	struct dir* dir = dir_open_root();
 	bool success
@@ -59,7 +59,7 @@ bool filesys_create(const char* name, off_t initial_size)
 		free_map_release(inode_sector, 1);
 	dir_close(dir);
 	
-	sema_up(&remove_create);
+	//sema_up(&remove_create);
 
 	return success;
 }
@@ -71,7 +71,7 @@ bool filesys_create(const char* name, off_t initial_size)
 	or if an internal memory allocation fails. */
 struct file* filesys_open(const char* name)
 {
-	sema_down(&remove_create);
+	//sema_down(&remove_create);
 	struct dir* dir = dir_open_root();
 	struct inode* inode = NULL;
 
@@ -79,7 +79,7 @@ struct file* filesys_open(const char* name)
 		dir_lookup(dir, name, &inode);
 	dir_close(dir);
 
-	sema_up(&remove_create);
+	//sema_up(&remove_create);
 
 	return file_open(inode);
 }
@@ -90,11 +90,11 @@ struct file* filesys_open(const char* name)
 	or if an internal memory allocation fails. */
 bool filesys_remove(const char* name)
 {
-	sema_down(&remove_create);
+	//sema_down(&remove_create);
 	struct dir* dir = dir_open_root();
 	bool success = dir != NULL && dir_remove(dir, name);
 	dir_close(dir);
-	sema_up(&remove_create);
+	//sema_up(&remove_create);
 
 	return success;
 }
