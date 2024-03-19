@@ -115,7 +115,7 @@ bool inode_create(block_sector_t sector, off_t length)
 struct inode* inode_open(block_sector_t sector)
 {
 	//sema_down(&inode_sema);
-	lock_acquire(&open_close_lock);
+	//lock_acquire(&open_close_lock);
 	struct list_elem* e;
 	struct inode* inode;
 
@@ -124,7 +124,7 @@ struct inode* inode_open(block_sector_t sector)
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
-			lock_release(&open_close_lock);
+			//lock_release(&open_close_lock);
 			//sema_up(&inode_sema);
 			return inode;
 		}
@@ -133,7 +133,7 @@ struct inode* inode_open(block_sector_t sector)
 	/* Allocate memory. */
 	inode = malloc(sizeof *inode);
 	if (inode == NULL)
-		lock_release(&open_close_lock);
+		//lock_release(&open_close_lock);
 		//sema_up(&inode_sema);
 		return NULL;
 
@@ -153,7 +153,7 @@ struct inode* inode_open(block_sector_t sector)
 	block_read(fs_device, inode->sector, &inode->data);
 	
 	//sema_up(&inode_sema);
-	lock_release(&open_close_lock);
+	//lock_release(&open_close_lock);
 
 	return inode;
 }

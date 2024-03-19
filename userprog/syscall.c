@@ -326,14 +326,31 @@ int wait (tid_t child_tid){ //returns exit status
 
 
 void valid_buff(void *buffer, unsigned size){
+  
   if (buffer == NULL){
     exit(-1);
   }
   unsigned int num_ptr = 0;
   while(num_ptr != size){
-    valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
-    num_ptr++;
+   if((void*)&buffer[num_ptr] == NULL || !is_user_vaddr((void*)&buffer[num_ptr])){
+    exit(-1);
+   }
+   //valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
+   num_ptr++;
   }
+
+  //printf("%u\n",size/4096);
+  num_ptr = 0;
+  for(int i = 0; i < (size / 4096); i++) {
+   
+    valid_addr((void*)&buffer[num_ptr]);
+    num_ptr = num_ptr + (int)PGSIZE;
+
+  }
+  valid_addr((void*)&buffer[size]);
+
+
+
 }
 
 
