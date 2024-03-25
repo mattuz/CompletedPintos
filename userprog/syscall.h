@@ -24,8 +24,7 @@ unsigned tell(int fd);
 void close (int fd);
 int wait (tid_t child_tid);
 
-void valid_buff(void *buffer, unsigned size);
-void valid_addr(void *ptr);
-void valid_fd(int fd);
+void valid_buff(const void *buffer, unsigned size);
+void valid_addr(const void *ptr);
 void valid_fd(int fd);
 

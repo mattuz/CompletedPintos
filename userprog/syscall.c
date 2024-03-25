@@ -258,8 +258,9 @@ int read (int fd, void *buffer, unsigned size){
   int bytes_read = 0;
   if (fd == 0){
     for(unsigned i = 0; i < size; i++) {
-      ++bytes_read;
-      input_getc();
+      *((char *)buffer) = input_getc();
+      buffer += sizeof(char);
+      bytes_read += sizeof(char);
       }
       return bytes_read;
   }
@@ -325,36 +326,41 @@ int wait (tid_t child_tid){ //returns exit status
 }
 
 
-void valid_buff(void *buffer, unsigned size){
+void valid_buff(const void *buffer, unsigned size){
   
   if (buffer == NULL){
     exit(-1);
   }
-  unsigned int num_ptr = 0;
+  valid_addr(buffer);
+  valid_addr(buffer + size - 1);
+
+
+  /**
+  unsigned num_ptr = 0;
   while(num_ptr != size){
    if((void*)&buffer[num_ptr] == NULL || !is_user_vaddr((void*)&buffer[num_ptr])){
     exit(-1);
    }
-   //valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
+   valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
    num_ptr++;
-  }
+  }**/
 
   //printf("%u\n",size/4096);
-  num_ptr = 0;
-  for(int i = 0; i < (size / 4096); i++) {
+  /**num_ptr = 0;
+  for(int i = 0; i < ((int)size / 4096); i++) {
    
     valid_addr((void*)&buffer[num_ptr]);
-    num_ptr = num_ptr + (int)PGSIZE;
+    num_ptr = num_ptr + 4096;
 
   }
-  valid_addr((void*)&buffer[size]);
+  valid_addr((void*)&buffer[size]);**/
 
 
 
 }
 
 
-void valid_addr (void *ptr){ 
+void valid_addr (const void *ptr){ 
   if(ptr == NULL || !is_user_vaddr(ptr) || pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
     exit(-1);
   }
