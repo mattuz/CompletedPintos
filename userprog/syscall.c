@@ -249,7 +249,10 @@ int open (const char *file){
 
 int file_size(int fd){
   struct thread *thread = thread_current();
-  return file_length(thread_current()->files[fd]);
+  if (thread->files[fd] == NULL) {
+    return -1;
+  }
+  return file_length(thread->files[fd]);
 }
 
 
@@ -300,6 +303,9 @@ int write (int fd, const void *buffer, unsigned size){
 void seek(int fd, unsigned position){
   //set cur pos i open file till position. Om större än fil, sätt end of file. 
   struct thread *current_thread = thread_current();
+  if (current_thread->files[fd] == NULL) {
+    return -1;
+  }
   if(position > file_length(current_thread->files[fd])){
     file_seek(current_thread->files[fd], file_size(current_thread->files[fd]));    
   } else {
@@ -310,6 +316,9 @@ void seek(int fd, unsigned position){
 
 unsigned tell(int fd){
   struct thread *current_thread = thread_current();
+  if (current_thread->files[fd] == NULL) {
+    return -1;
+  }
   return file_tell(current_thread->files[fd]);
 }
 
@@ -334,26 +343,30 @@ void valid_buff(const void *buffer, unsigned size){
   valid_addr(buffer);
   valid_addr(buffer + size - 1);
 
+  //int pgs = size/4096
 
-  /**
-  unsigned num_ptr = 0;
+  for (unsigned i = 0; i < size; i+=4096) {
+    if(i%4096 == 0) {
+      valid_addr(buffer+i);
+    }
+  }
+    
+
+  /**unsigned num_ptr = 0;
   while(num_ptr != size){
-   if((void*)&buffer[num_ptr] == NULL || !is_user_vaddr((void*)&buffer[num_ptr])){
-    exit(-1);
-   }
-   valid_addr((void*)&buffer[num_ptr]); //*(buffer+num_ptr)
-   num_ptr++;
-  }**/
+    valid_addr((void*)&buffer[num_ptr]);
+    num_ptr++;
+  }*/
 
   //printf("%u\n",size/4096);
-  /**num_ptr = 0;
+  /**int pg = 0;
   for(int i = 0; i < ((int)size / 4096); i++) {
    
-    valid_addr((void*)&buffer[num_ptr]);
-    num_ptr = num_ptr + 4096;
+    valid_addr((void*)&buffer[pg]);
+    pg += 4096;
 
-  }
-  valid_addr((void*)&buffer[size]);**/
+  }**/
+  //valid_addr((void*)&buffer[size]);
 
 
 
