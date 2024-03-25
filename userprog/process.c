@@ -76,7 +76,6 @@ tid_t process_execute(const char *cmd_line)
 	// args->t_parent = t_cur;
 
 	tid_t tid_c = thread_create (file_name, PRI_DEFAULT, start_process, args); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
-
 	if (tid_c == TID_ERROR){
 		palloc_free_page (cl_copy);
 		free(args);
@@ -128,7 +127,6 @@ tid_t process_execute(const char *cmd_line)
 			}
 		}
 	}*/
-	
 	free(args);
 
 	return TID_ERROR;
@@ -140,7 +138,6 @@ tid_t process_execute(const char *cmd_line)
 static void start_process(void *args) //LISMA
 {									//aux är numera cmd_line_
 	//char* cmd_line = cmd_line_; detta är nytt
-
 	//Här inne är vi inne i barnet
 	struct thread *t_cur = thread_current(); //Ny process
 	//struct thread *t_parent = ((struct aux *)args)-> t_parent;
@@ -158,16 +155,14 @@ static void start_process(void *args) //LISMA
 
 
 	bool loaded = load(cmd_line, &if_.eip, &if_.esp);
-
 	
 
 	/* If load failed, quit. */
 	palloc_free_page (cmd_line); //här står det cmd_line ist för aux-file_name
 
 	if (!loaded) {
-		//printf("sp säger inte loadat \n");
 		sema_up(&(((struct aux *)args)->pc_sema)); //fråga dag: Hur annars ska man kunna stoppa förälder? 
-		thread_exit ();
+		thread_exit();
 	} //LISMA
     // Strukturera parent_child mapping
 	struct parent_child *parent_child = malloc(sizeof(struct parent_child)); //structen vi dela rmed föräldern

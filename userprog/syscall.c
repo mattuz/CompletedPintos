@@ -206,7 +206,7 @@ void halt(void){
 }
 
 
-void exit (int status){  
+void exit (int status){ 
   if(thread_current()->pc_parent != NULL){
     thread_current()->pc_parent->exit_status = status; //skulle detta skyddas av semaphor?
   } 
@@ -343,33 +343,11 @@ void valid_buff(const void *buffer, unsigned size){
   valid_addr(buffer);
   valid_addr(buffer + size - 1);
 
-  //int pgs = size/4096
-
   for (unsigned i = 0; i < size; i+=4096) {
     if(i%4096 == 0) {
       valid_addr(buffer+i);
     }
   }
-    
-
-  /**unsigned num_ptr = 0;
-  while(num_ptr != size){
-    valid_addr((void*)&buffer[num_ptr]);
-    num_ptr++;
-  }*/
-
-  //printf("%u\n",size/4096);
-  /**int pg = 0;
-  for(int i = 0; i < ((int)size / 4096); i++) {
-   
-    valid_addr((void*)&buffer[pg]);
-    pg += 4096;
-
-  }**/
-  //valid_addr((void*)&buffer[size]);
-
-
-
 }
 
 
