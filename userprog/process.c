@@ -77,7 +77,6 @@ tid_t process_execute(const char *cmd_line)
 
 	tid_t tid_c = thread_create (file_name, PRI_DEFAULT, start_process, args); //thread_create(cmd_line, PRI_DEFAULT, start_process, cl_copy);
 
-
 	if (tid_c == TID_ERROR){
 		palloc_free_page (cl_copy);
 		free(args);

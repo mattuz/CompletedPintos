@@ -68,7 +68,7 @@ static struct list open_inodes;
 void inode_init(void)
 {
 	list_init(&open_inodes);
-	sema_init(&inode_sema, 1);
+	//sema_init(&inode_sema, 1);
 	lock_init(&open_close_lock);
 }
 
@@ -115,16 +115,17 @@ bool inode_create(block_sector_t sector, off_t length)
 struct inode* inode_open(block_sector_t sector)
 {
 	//sema_down(&inode_sema);
-	//lock_acquire(&open_close_lock);
 	struct list_elem* e;
 	struct inode* inode;
+	lock_acquire(&open_close_lock);
+
 
 	/* Check whether this inode is already open. */
 	for (e = list_begin(&open_inodes); e != list_end(&open_inodes); e = list_next(e)) {
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
-			//lock_release(&open_close_lock);
+			lock_release(&open_close_lock);
 			//sema_up(&inode_sema);
 			return inode;
 		}
@@ -153,7 +154,7 @@ struct inode* inode_open(block_sector_t sector)
 	block_read(fs_device, inode->sector, &inode->data);
 	
 	//sema_up(&inode_sema);
-	//lock_release(&open_close_lock);
+	lock_release(&open_close_lock);
 
 	return inode;
 }
@@ -185,8 +186,8 @@ void inode_close(struct inode* inode)
 	if (inode == NULL)
 		return;
 
-	sema_down(&inode_sema);
-	//lock_acquire(&open_close_lock);
+	//sema_down(&inode_sema);
+	lock_acquire(&open_close_lock);
 
 	/* Release resources if this was the last opener. */
 	if (--inode->open_cnt == 0) {
@@ -201,8 +202,8 @@ void inode_close(struct inode* inode)
 
 		free(inode);
 	}
-	//lock_release(&open_close_lock);
-	sema_up(&inode_sema);
+	lock_release(&open_close_lock);
+	//sema_up(&inode_sema);
 }
 
 /* Marks INODE to be deleted when it is closed by the last caller who
@@ -219,14 +220,14 @@ void inode_remove(struct inode* inode)
 off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset)
 {
 
-	sema_down(&inode->queue); //ingen skillnad
+	//sema_down(&inode->queue); //ingen skillnad
 	sema_down(&inode->mutex);
 	inode->read_count++;
 
 	if (inode->read_count == 1) {
 		sema_down(&inode->wrt);
 	}
-	sema_up(&inode->queue);
+	//sema_up(&inode->queue);
 	sema_up(&inode->mutex);
 
 	uint8_t* buffer = buffer_;
@@ -290,11 +291,11 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 	growth is not yet implemented.) */
 off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t offset)
 {
-	sema_down(&inode->queue);
+	//sema_down(&inode->queue);
 
 	sema_down(&inode->wrt);
 
-	sema_up(&inode->queue);
+	//sema_up(&inode->queue);
 	const uint8_t* buffer = buffer_;
 	off_t bytes_written = 0;
 	uint8_t* bounce = NULL;
