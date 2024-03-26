@@ -140,6 +140,7 @@ struct parent_child
 	If true, use multi-level feedback queue scheduler.
 	Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+extern int thread_create_limit;
 
 void thread_init(void);
 void thread_start(void);
@@ -171,5 +172,8 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+bool DEBUG_thread_create_simulate_fail(void);
+
 
 #endif /* threads/thread.h */

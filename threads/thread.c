@@ -173,6 +173,10 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 
 	ASSERT(function != NULL);
 
+	if (DEBUG_thread_create_simulate_fail())
+		return TID_ERROR;
+
+
 	/* Allocate thread. */
 	t = palloc_get_page(PAL_ZERO);
 	if (t == NULL)
@@ -577,6 +581,15 @@ static tid_t allocate_tid(void)
 
 	return tid;
 }
+
+bool DEBUG_thread_create_simulate_fail(void)
+{
+    if (thread_create_limit == 0)
+        return false;
+    else
+        return --thread_create_limit == 0;
+}
+
 
 /* Offset of `stack' member within `struct thread'.
 	Used by switch.S, which can't figure it out on its own. */
