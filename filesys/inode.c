@@ -13,7 +13,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-struct semaphore inode_sema;
+//struct semaphore inode_sema;
 struct lock open_close_lock;
 
 /* On-disk inode.
@@ -125,18 +125,18 @@ struct inode* inode_open(block_sector_t sector)
 		inode = list_entry(e, struct inode, elem);
 		if (inode->sector == sector) {
 			inode_reopen(inode);
-			lock_release(&open_close_lock);
-			//sema_up(&inode_sema);
 			return inode;
 		}
 	}
 
 	/* Allocate memory. */
 	inode = malloc(sizeof *inode);
-	if (inode == NULL)
-		//lock_release(&open_close_lock);
+	if (inode == NULL) {
+		lock_release(&open_close_lock);
 		//sema_up(&inode_sema);
 		return NULL;
+	}
+		
 
 	/* Initialize. */
 	list_push_front(&open_inodes, &inode->elem);
@@ -162,12 +162,20 @@ struct inode* inode_open(block_sector_t sector)
 /* Reopens and returns INODE. */
 struct inode* inode_reopen(struct inode* inode)
 {
+	//om inte låst redan, lås
+	if (!lock_held_by_current_thread(&open_close_lock)){
+		lock_acquire(&open_close_lock);
+	}
 	if (inode != NULL) {
 		if (inode->open_cnt != 0){
 			inode->open_cnt++;
 		}
 	}
-		
+	
+	if (lock_held_by_current_thread(&open_close_lock)){
+		lock_release(&open_close_lock);
+	}
+
 	return inode;
 }
 
